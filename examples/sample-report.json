@@ -1,0 +1,94 @@
+{
+  "tool": "DataGobs",
+  "version": "1.0.0",
+  "author": "Favio Urrea",
+  "license": "Uso abierto",
+  "generated_at": "2026-05-19T12:00:00Z",
+  "scan": {
+    "id": 1,
+    "institution": "Ejemplo Institución",
+    "domain": "ejemplo.gob.mx",
+    "mode": "standard",
+    "created_at": "2026-05-19T12:00:00+00:00",
+    "overall_score": 62.5,
+    "overall_grade": 7,
+    "scoring_url": "https://ejemplo.gob.mx/",
+    "scoring_http_code": 200,
+    "comparison_status": null,
+    "score_delta": null,
+    "previous_score": null,
+    "score_explanation": "Primer escaneo registrado para este dominio.",
+    "component_scores": {
+      "tls": 75.0,
+      "headers": 52.3,
+      "cookies": 100.0,
+      "dns": 70.0,
+      "consistency": 85.0
+    },
+    "findings": [
+      "missing_csp",
+      "missing_permissions_policy",
+      "no_dns_caa",
+      "no_security_txt"
+    ],
+    "recommendations": [
+      {
+        "id": "missing_csp",
+        "title": "Falta Content-Security-Policy",
+        "recommendation": "Defina una política CSP restrictiva. Comience con default-src 'self' y refine según recursos necesarios.",
+        "severity": "high"
+      }
+    ],
+    "tls_evidence": {
+      "hostname": "ejemplo.gob.mx",
+      "valid": true,
+      "issuer": "Let's Encrypt",
+      "days_until_expiry": 45,
+      "tls_versions": { "tls_1_2": true, "tls_1_3": true }
+    },
+    "dns_evidence": {
+      "hostname": "ejemplo.gob.mx",
+      "a_records": ["203.0.113.10"],
+      "has_caa": false
+    }
+  },
+  "results": [
+    {
+      "url_evaluated": "https://ejemplo.gob.mx/",
+      "final_url": "https://ejemplo.gob.mx/",
+      "http_code": 200,
+      "response_type": "main",
+      "is_scoring_source": true,
+      "score": 62.5,
+      "grade": 7,
+      "headers": {
+        "strict-transport-security": "max-age=31536000",
+        "x-frame-options": "SAMEORIGIN",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "strict-origin-when-cross-origin"
+      },
+      "missing_headers": [
+        "content-security-policy",
+        "permissions-policy",
+        "x-xss-protection"
+      ],
+      "cookies": [],
+      "redirect_chain": [],
+      "notes": null
+    },
+    {
+      "url_evaluated": "https://ejemplo.gob.mx/administrator/",
+      "final_url": "https://ejemplo.gob.mx/administrator/",
+      "http_code": 403,
+      "response_type": "blocked",
+      "is_scoring_source": false,
+      "score": 28.0,
+      "grade": 3,
+      "headers": {},
+      "missing_headers": ["strict-transport-security", "content-security-policy"],
+      "cookies": [],
+      "redirect_chain": [{"url": "https://ejemplo.gob.mx/administrator/", "status_code": 403}],
+      "notes": "Inconsistencia en página bloqueada: sin cabeceras de seguridad"
+    }
+  ]
+}
