@@ -145,6 +145,18 @@ Cada hallazgo incluye título, recomendación técnica y severidad. Ejemplos:
 
 Lista completa en `backend/app/recommendations.py`.
 
+## Publicar en GitHub (repositorio privado)
+
+1. Instala [Git](https://git-scm.com/) y [GitHub CLI](https://cli.github.com/) si no los tienes.
+2. Inicia sesión: `gh auth login`
+3. Desde la carpeta del proyecto ejecuta:
+
+```powershell
+.\scripts\publicar-github.ps1
+```
+
+Eso crea el repositorio **privado** `DataGobs` en tu cuenta y sube el código.
+
 ## Advertencia legal
 
 Use DataGobs **únicamente** sobre dominios y sistemas para los que tenga autorización explícita. El desarrollador no se hace responsable del uso indebido de esta herramienta.

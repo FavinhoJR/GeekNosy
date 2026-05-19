@@ -9,12 +9,7 @@ $gh = "C:\Program Files\GitHub CLI\gh.exe"
 if (-not (Test-Path $git)) { $git = "git" }
 if (-not (Test-Path $gh)) { $gh = "gh" }
 
-$root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-if (Test-Path "$PSScriptRoot\..\backend") {
-    $root = Resolve-Path "$PSScriptRoot\.."
-}
-
-Set-Location $root
+Set-Location (Resolve-Path "$PSScriptRoot\..")
 
 Write-Host "=== DataGobs - Publicar en GitHub (privado) ===" -ForegroundColor Cyan
 
