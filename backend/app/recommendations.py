@@ -126,6 +126,31 @@ RECOMMENDATIONS: dict[str, dict] = {
         "recommendation": "Use max-age de al menos 31536000 (1 año) en Strict-Transport-Security.",
         "severity": "medium",
     },
+    "critical_exposure_public": {
+        "title": "Recurso crítico expuesto públicamente",
+        "recommendation": "Bloquee el acceso web a archivos sensibles (.env, backups, .git, bases de datos). No deben responder con HTTP 200.",
+        "severity": "critical",
+    },
+    "sensitive_path_accessible": {
+        "title": "Ruta sensible accesible",
+        "recommendation": "Restrinja el acceso a archivos de configuración o repositorio. Verifique reglas del servidor web y WAF.",
+        "severity": "high",
+    },
+    "sensitive_path_redirect": {
+        "title": "Ruta sensible con redirección",
+        "recommendation": "Revise si la redirección expone rutas internas o información del backend.",
+        "severity": "medium",
+    },
+    "api_docs_exposed": {
+        "title": "Documentación de API expuesta",
+        "recommendation": "Proteja Swagger/OpenAPI con autenticación o restrinja a redes internas si no es público por diseño.",
+        "severity": "low",
+    },
+    "route_missing_security_headers": {
+        "title": "Ruta sin cabeceras de seguridad",
+        "recommendation": "Aplique las mismas cabeceras de seguridad en todas las rutas públicas, no solo en la página principal.",
+        "severity": "low",
+    },
 }
 
 

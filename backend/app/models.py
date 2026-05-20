@@ -33,6 +33,10 @@ class Scan(Base):
     findings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     tls_evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     dns_evidence_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    route_profile: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    include_exposure_checks: Mapped[bool] = mapped_column(default=False)
+    max_paths_per_domain: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    route_meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     results: Mapped[list["ScanResult"]] = relationship(
         back_populates="scan", cascade="all, delete-orphan"
@@ -45,6 +49,17 @@ class Scan(Base):
         if not self.findings_json:
             return []
         return json.loads(self.findings_json)
+
+    def set_route_meta(self, tech: dict, selection: dict):
+        self.route_meta_json = json.dumps(
+            {"tech_detection": tech, "route_selection": selection},
+            ensure_ascii=False,
+        )
+
+    def get_route_meta(self) -> dict:
+        if not self.route_meta_json:
+            return {}
+        return json.loads(self.route_meta_json)
 
 
 class ScanResult(Base):

@@ -15,7 +15,7 @@ export default function HeaderCheck({ present, label, points }) {
   }
   return (
     <span
-      className="inline-block w-2 h-2 rounded-full bg-slate-300"
+      className="inline-block w-2 h-2 rounded-full bg-slate-700"
       title={`${label} ausente`}
     />
   )

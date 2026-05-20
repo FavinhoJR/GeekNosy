@@ -1,16 +1,6 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
-DEFAULT_PATHS = [
-    "/",
-    "/web/",
-    "/administrator/",
-    "/web/administrator/",
-    "/component/users",
-    "/web/component/users",
-    "/web/index.php/component/users",
-]
-
 # Puntos por header (modo estándar)
 HEADER_POINTS = {
     "content-security-policy": 15,
@@ -35,7 +25,11 @@ ADVANCED_SECURITY_HEADERS = list(ADVANCED_HEADER_POINTS.keys())
 class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./data/datagobs.db"
     scan_timeout: float = 15.0
-    max_redirects: int = 10
+    path_timeout: float = 8.0
+    path_rate_limit_ms: int = 250
+    max_redirects: int = 5
+    max_paths_per_domain_default: int = 40
+    max_body_preview: int = 8192
     user_agent: str = "DataGobs/1.0 (defensive security assessment; +https://github.com/datagobs)"
     data_dir: Path = Path("./data")
 

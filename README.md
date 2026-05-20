@@ -22,19 +22,34 @@
 - Autenticación ni scraping masivo
 - Pruebas intrusivas de ningún tipo
 
-## Rutas evaluadas por defecto
+## Rutas evaluadas (perfiles inteligentes)
 
-```
-/
-/web/
-/administrator/
-/web/administrator/
-/component/users
-/web/component/users
-/web/index.php/component/users
-```
+DataGobs usa **perfiles de rutas**. Por defecto trabaja en modo `auto`:
 
-Puede agregar rutas personalizadas desde la interfaz.
+| Componente | Descripción |
+|------------|-------------|
+| **core** | Rutas públicas básicas (`/`, `robots.txt`, `security.txt`, etc.) |
+| **tecnología detectada** | WordPress, Joomla, Drupal, Laravel, Django, Node, IIS, APIs |
+| **custom_paths** | Rutas agregadas manualmente por el usuario |
+
+**No evalúa todas las rutas posibles.** Evalúa: rutas base (core) + rutas según tecnología detectada + rutas personalizadas.
+
+### Perfiles disponibles
+
+`core`, `common`, `wordpress`, `joomla`, `drupal`, `laravel_php`, `django_python`, `node_frontend`, `aspnet_iis`, `api_docs`, `exposure_checks`
+
+### Modos de perfil (`route_profile`)
+
+| Valor | Comportamiento |
+|-------|----------------|
+| `minimal` | Solo core |
+| `standard` / `auto` | Core + tecnología detectada |
+| `advanced` | Core + common + tecnología + api_docs si aplica |
+| `all` | Todos los perfiles (respetando `max_paths_per_domain`) |
+
+Las rutas sensibles (`/.env`, `/.git/config`, backups, etc.) solo se evalúan con **HEAD** y metadatos si activas `include_exposure_checks`. Nunca se descarga ni muestra contenido sensible.
+
+Consulta perfiles y rutas: `GET /api/info`
 
 ## Modos de puntuación
 
@@ -64,9 +79,12 @@ curl -X POST http://localhost:3000/api/scan \
   -d '{
     "domains": ["example.com"],
     "institution": "Mi Institución",
-    "mode": "standard",
-    "custom_paths": ["/portal/"],
-    "include_default_paths": true
+    "mode": "advanced",
+    "route_profile": "auto",
+    "include_default_paths": true,
+    "include_exposure_checks": false,
+    "max_paths_per_domain": 40,
+    "custom_paths": ["/portal/", "/transparencia/"]
   }'
 ```
 
@@ -151,12 +169,4 @@ Lista completa en `backend/app/recommendations.py`.
 2. Inicia sesión: `gh auth login`
 3. Desde la carpeta del proyecto ejecuta:
 
-```powershell
-.\scripts\publicar-github.ps1
-```
 
-Eso crea el repositorio **privado** `DataGobs` en tu cuenta y sube el código.
-
-## Advertencia legal
-
-Use DataGobs **únicamente** sobre dominios y sistemas para los que tenga autorización explícita. El desarrollador no se hace responsable del uso indebido de esta herramienta.

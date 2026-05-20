@@ -32,15 +32,32 @@ async def migrate_legacy_data():
         await session.commit()
 
 
+async def _ensure_columns():
+    """Añade columnas nuevas en SQLite si la BD ya existía."""
+    migrations = [
+        "ALTER TABLE scans ADD COLUMN route_profile VARCHAR(32)",
+        "ALTER TABLE scans ADD COLUMN include_exposure_checks BOOLEAN DEFAULT 0",
+        "ALTER TABLE scans ADD COLUMN max_paths_per_domain INTEGER",
+        "ALTER TABLE scans ADD COLUMN route_meta_json TEXT",
+    ]
+    async with engine.begin() as conn:
+        for sql in migrations:
+            try:
+                await conn.exec_driver_sql(sql)
+            except Exception:
+                pass
+
+
 async def init_db():
     from app import models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _ensure_columns()
     try:
         await migrate_legacy_data()
     except Exception:
-        pass  # primera ejecución o esquema nuevo sin datos previos
+        pass
 
 
 async def get_db():

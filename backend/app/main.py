@@ -48,7 +48,8 @@ async def health():
 
 @app.get("/api/info")
 async def info():
-    from app.config import DEFAULT_PATHS
+    from app.config import settings
+    from app.route_profiles import PROFILE_DESCRIPTIONS, ROUTE_PROFILES, ROUTE_PROFILE_MODES
 
     return {
         "name": "DataGobs",
@@ -56,12 +57,35 @@ async def info():
         "author": __author__,
         "license": "Uso abierto",
         "description": "Evaluación no intrusiva de configuración pública de seguridad web",
-        "default_paths": DEFAULT_PATHS,
+        "route_profiles": {
+            "available": ROUTE_PROFILE_MODES,
+            "descriptions": PROFILE_DESCRIPTIONS,
+            "paths_by_profile": ROUTE_PROFILES,
+            "auto_mode": (
+                "Evalúa rutas core, detecta tecnología (WordPress, Joomla, Drupal, Laravel, "
+                "Django, Node, IIS, APIs) y agrega rutas del perfil correspondiente. "
+                "Equivalente a standard con detección dinámica."
+            ),
+            "profile_behavior": {
+                "minimal": "Solo core",
+                "standard": "Core + tecnología detectada",
+                "advanced": "Core + common + tecnología detectada + api_docs si aplica",
+                "all": "Todos los perfiles (respetando max_paths_per_domain)",
+                "auto": "Igual que standard según detección",
+            },
+        },
+        "scan_options": {
+            "route_profile": ROUTE_PROFILE_MODES,
+            "include_exposure_checks": "Solo metadatos HEAD; nunca descarga contenido sensible",
+            "max_paths_per_domain_default": settings.max_paths_per_domain_default,
+        },
         "modes": ["standard", "advanced"],
         "restrictions": [
             "Sin explotación ni fuzzing agresivo",
             "Sin fuerza bruta ni bypass",
-            "Solo configuración HTTP/HTTPS/DNS pública visible",
+            "Solo GET/HEAD públicos",
+            "Sin autenticación ni payloads",
+            "Rutas sensibles: solo status, headers y content-type/length",
         ],
     }
 
