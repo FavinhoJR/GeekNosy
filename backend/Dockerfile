@@ -13,9 +13,14 @@ COPY app ./app
 
 RUN mkdir -p /app/data
 
+RUN addgroup --system datagobs && adduser --system --ingroup datagobs datagobs \
+    && chown -R datagobs:datagobs /app
+
 ENV DATAGOBS_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000
+
+USER datagobs
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

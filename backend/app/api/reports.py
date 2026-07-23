@@ -1,6 +1,7 @@
 """Exportación de reportes JSON, CSV y PDF."""
 
 import csv
+import html
 import io
 import json
 from datetime import datetime
@@ -19,12 +20,21 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import Scan
 from app.recommendations import get_recommendations
+from app.security import require_api_key
 
-router = APIRouter(prefix="/api/reports", tags=["reports"])
+router = APIRouter(
+    prefix="/api/reports",
+    tags=["reports"],
+    dependencies=[Depends(require_api_key)],
+)
 
 
-async def _load_scan(scan_id: int, db: AsyncSession) -> Scan:
-    q = select(Scan).options(selectinload(Scan.results)).where(Scan.id == scan_id)
+async def _load_scan(scan_id: int, db: AsyncSession, identity: str) -> Scan:
+    q = (
+        select(Scan)
+        .options(selectinload(Scan.results))
+        .where(Scan.id == scan_id, Scan.owner == identity)
+    )
     result = await db.execute(q)
     scan = result.scalar_one_or_none()
     if not scan:
@@ -45,6 +55,8 @@ def _scan_to_dict(scan: Scan) -> dict:
             "institution": scan.institution,
             "domain": scan.domain,
             "mode": scan.mode,
+            "intensity": scan.intensity,
+            "job_id": scan.job_id,
             "created_at": scan.created_at.isoformat() if scan.created_at else None,
             "overall_score": scan.overall_score,
             "overall_grade": scan.overall_grade,
@@ -63,6 +75,7 @@ def _scan_to_dict(scan: Scan) -> dict:
             },
             "findings": findings,
             "recommendations": get_recommendations(findings),
+            "finding_details": scan.get_finding_details(),
             "tls_evidence": json.loads(scan.tls_evidence_json) if scan.tls_evidence_json else {},
             "dns_evidence": json.loads(scan.dns_evidence_json) if scan.dns_evidence_json else {},
         },
@@ -80,6 +93,7 @@ def _scan_to_dict(scan: Scan) -> dict:
                 "cookies": r.get_cookies(),
                 "redirect_chain": r.get_redirect_chain(),
                 "notes": r.notes,
+                "evidence": r.get_evidence(),
             }
             for r in scan.results
         ],
@@ -87,8 +101,12 @@ def _scan_to_dict(scan: Scan) -> dict:
 
 
 @router.get("/{scan_id}/json")
-async def export_json(scan_id: int, db: AsyncSession = Depends(get_db)):
-    scan = await _load_scan(scan_id, db)
+async def export_json(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    scan = await _load_scan(scan_id, db, identity)
     data = _scan_to_dict(scan)
     content = json.dumps(data, indent=2, ensure_ascii=False)
     return Response(
@@ -99,8 +117,12 @@ async def export_json(scan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{scan_id}/csv")
-async def export_csv(scan_id: int, db: AsyncSession = Depends(get_db)):
-    scan = await _load_scan(scan_id, db)
+async def export_csv(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    scan = await _load_scan(scan_id, db, identity)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
@@ -138,8 +160,12 @@ async def export_csv(scan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/{scan_id}/pdf")
-async def export_pdf(scan_id: int, db: AsyncSession = Depends(get_db)):
-    scan = await _load_scan(scan_id, db)
+async def export_pdf(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    scan = await _load_scan(scan_id, db, identity)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2 * cm, leftMargin=2 * cm)
     styles = getSampleStyleSheet()
@@ -196,7 +222,7 @@ async def export_pdf(scan_id: int, db: AsyncSession = Depends(get_db)):
 
     elements.append(Spacer(1, 1 * cm))
     elements.append(Paragraph(
-        "DataGobs v1.0 — Herramienta defensiva. Autor: Favio Urrea. Uso abierto.",
+        "DataGobs v2.0 — Herramienta defensiva. Autor: Favio Urrea. Uso abierto.",
         ParagraphStyle("Footer", parent=styles["Normal"], fontSize=7, textColor=colors.grey),
     ))
 
@@ -206,4 +232,192 @@ async def export_pdf(scan_id: int, db: AsyncSession = Depends(get_db)):
         content=buffer.getvalue(),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.pdf"'},
+    )
+
+
+@router.get("/{scan_id}/jsonl")
+async def export_jsonl(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    scan = await _load_scan(scan_id, db, identity)
+    data = _scan_to_dict(scan)
+    lines = [
+        json.dumps(
+            {"type": "scan", **data["scan"]},
+            ensure_ascii=False,
+            default=str,
+        )
+    ]
+    lines.extend(
+        json.dumps({"type": "result", **item}, ensure_ascii=False, default=str)
+        for item in data["results"]
+    )
+    return Response(
+        content="\n".join(lines) + "\n",
+        media_type="application/x-ndjson",
+        headers={
+            "Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.jsonl"'
+        },
+    )
+
+
+@router.get("/{scan_id}/sarif")
+async def export_sarif(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    scan = await _load_scan(scan_id, db, identity)
+    details = scan.get_finding_details()
+    if not details:
+        details = [
+            {
+                "id": finding,
+                "title": finding,
+                "severity": get_recommendations([finding])[0]["severity"]
+                if get_recommendations([finding])
+                else "warning",
+                "recommendation": get_recommendations([finding])[0]["recommendation"]
+                if get_recommendations([finding])
+                else "",
+                "evidence": {"url": scan.scoring_url},
+            }
+            for finding in scan.get_findings()
+        ]
+    level_map = {
+        "critical": "error",
+        "high": "error",
+        "medium": "warning",
+        "low": "note",
+        "info": "note",
+    }
+    rules = {}
+    results = []
+    for finding in details:
+        rule_id = finding["id"]
+        rules[rule_id] = {
+            "id": rule_id,
+            "name": finding.get("title", rule_id),
+            "shortDescription": {"text": finding.get("title", rule_id)},
+            "help": {"text": finding.get("recommendation", "")},
+            "properties": {
+                "security-severity": finding.get("severity", "info"),
+                "confidence": finding.get("confidence", "medium"),
+                "references": finding.get("references", []),
+            },
+        }
+        url = finding.get("evidence", {}).get("url") or scan.scoring_url or ""
+        results.append(
+            {
+                "ruleId": rule_id,
+                "level": level_map.get(finding.get("severity", "info"), "note"),
+                "message": {"text": finding.get("title", rule_id)},
+                "locations": [
+                    {"physicalLocation": {"artifactLocation": {"uri": url}}}
+                ],
+                "fingerprints": {
+                    "datagobs": finding.get("fingerprint", f"{scan.id}:{rule_id}")
+                },
+            }
+        )
+    sarif = {
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "DataGobs",
+                        "version": "2.0.0",
+                        "rules": list(rules.values()),
+                    }
+                },
+                "results": results,
+            }
+        ],
+    }
+    return Response(
+        content=json.dumps(sarif, ensure_ascii=False, indent=2),
+        media_type="application/sarif+json",
+        headers={
+            "Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.sarif"'
+        },
+    )
+
+
+def _markdown_report(scan: Scan) -> str:
+    lines = [
+        "# DataGobs - Reporte de Seguridad",
+        "",
+        f"- Dominio: `{scan.domain}`",
+        f"- Puntaje: **{scan.overall_score}/100**",
+        f"- Nota: **{scan.overall_grade}/10**",
+        f"- Intensidad: `{scan.intensity}`",
+        f"- Fecha: `{scan.created_at.isoformat()}`",
+        "",
+        "## Hallazgos",
+        "",
+    ]
+    recommendations = get_recommendations(scan.get_findings())
+    if not recommendations:
+        lines.append("No se registraron hallazgos.")
+    for rec in recommendations:
+        lines.extend(
+            [
+                f"### {rec['title']}",
+                "",
+                f"- Severidad: **{rec['severity']}**",
+                f"- Recomendación: {rec['recommendation']}",
+                "",
+            ]
+        )
+    return "\n".join(lines)
+
+
+@router.get("/{scan_id}/markdown")
+async def export_markdown(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    scan = await _load_scan(scan_id, db, identity)
+    return Response(
+        content=_markdown_report(scan),
+        media_type="text/markdown",
+        headers={
+            "Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.md"'
+        },
+    )
+
+
+@router.get("/{scan_id}/html")
+async def export_html(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    scan = await _load_scan(scan_id, db, identity)
+    cards = "".join(
+        f"<article><h2>{html.escape(rec['title'])}</h2>"
+        f"<p><strong>{html.escape(rec['severity'])}</strong></p>"
+        f"<p>{html.escape(rec['recommendation'])}</p></article>"
+        for rec in get_recommendations(scan.get_findings())
+    )
+    document = f"""<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>DataGobs - {html.escape(scan.domain)}</title>
+<style>body{{font:16px system-ui;background:#020617;color:#cbd5e1;max-width:960px;margin:auto;padding:32px}}
+article{{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:16px;margin:12px 0}}
+h1,h2{{color:#fff}}strong{{color:#f59e0b}}</style></head>
+<body><h1>DataGobs - {html.escape(scan.domain)}</h1>
+<p>Puntaje <strong>{scan.overall_score}/100</strong> · Nota <strong>{scan.overall_grade}/10</strong></p>
+{cards or "<p>No se registraron hallazgos.</p>"}</body></html>"""
+    return Response(
+        content=document,
+        media_type="text/html",
+        headers={
+            "Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.html"'
+        },
     )

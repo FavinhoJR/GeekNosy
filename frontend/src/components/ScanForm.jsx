@@ -5,6 +5,7 @@ export default function ScanForm({ onScanComplete }) {
   const [domains, setDomains] = useState('')
   const [institution, setInstitution] = useState('')
   const [mode, setMode] = useState('standard')
+  const [intensity, setIntensity] = useState('standard')
   const [routeProfile, setRouteProfile] = useState('auto')
   const [includeExposure, setIncludeExposure] = useState(false)
   const [maxPaths, setMaxPaths] = useState(40)
@@ -13,6 +14,10 @@ export default function ScanForm({ onScanComplete }) {
   const [routeInfo, setRouteInfo] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [authorized, setAuthorized] = useState(false)
+  const [job, setJob] = useState(null)
+  const [scheduleEnabled, setScheduleEnabled] = useState(false)
+  const [scheduleHours, setScheduleHours] = useState(24)
 
   useEffect(() => {
     api.info().then(setRouteInfo).catch(() => {})
@@ -29,30 +34,63 @@ export default function ScanForm({ onScanComplete }) {
       setError('Ingrese al menos un dominio')
       return
     }
+    if (!authorized) {
+      setError('Debe confirmar que cuenta con autorización para evaluar estos objetivos')
+      return
+    }
     const paths = customPaths
       .split('\n')
       .map((p) => p.trim())
       .filter(Boolean)
     setLoading(true)
     try {
-      const results = await api.scan({
+      const scanRequest = {
         domains: domainList,
         institution: institution || null,
         mode,
+        intensity,
         route_profile: routeProfile,
         include_default_paths: includeDefault,
         include_exposure_checks: includeExposure,
         max_paths_per_domain: Number(maxPaths) || 40,
         custom_paths: paths,
-      })
-      onScanComplete?.(results)
-      setDomains('')
-      setCustomPaths('')
+        authorization_confirmed: authorized,
+      }
+      const created = await api.createJob(scanRequest)
+      if (scheduleEnabled) {
+        await api.createSchedule({
+          name: `${institution || domainList[0]} - ${intensity}`,
+          interval_minutes: Math.max(5, Number(scheduleHours) * 60),
+          request: scanRequest,
+        })
+      }
+      setJob(created)
+      let current = created
+      while (!['completed', 'failed', 'cancelled'].includes(current.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        current = await api.getJob(created.id)
+        setJob(current)
+      }
+      if (current.status === 'completed') {
+        onScanComplete?.(current)
+        setDomains('')
+        setCustomPaths('')
+      } else if (current.status === 'failed') {
+        throw new Error(current.error || 'El trabajo de escaneo falló')
+      } else {
+        setError('El escaneo fue cancelado')
+      }
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
+  }
+
+  const cancelCurrentJob = async () => {
+    if (!job?.id) return
+    const updated = await api.cancelJob(job.id)
+    setJob(updated)
   }
 
   return (
@@ -123,6 +161,23 @@ export default function ScanForm({ onScanComplete }) {
                 <option value="all" className="bg-slate-900">All (Todo sin restricción)</option>
               </select>
             </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                Intensidad
+              </label>
+              <select
+                value={intensity}
+                onChange={(e) => setIntensity(e.target.value)}
+                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 focus:outline-none"
+              >
+                <option value="passive">Passive</option>
+                <option value="fast">Fast</option>
+                <option value="standard">Standard</option>
+                <option value="bug_bounty">Bug bounty</option>
+                <option value="deep">Deep</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -183,13 +238,68 @@ export default function ScanForm({ onScanComplete }) {
         </div>
       </details>
 
+      <div className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/30 p-4 sm:grid-cols-[1fr_180px]">
+        <label className="flex items-center gap-2.5 text-xs text-slate-300">
+          <input
+            type="checkbox"
+            checked={scheduleEnabled}
+            onChange={(e) => setScheduleEnabled(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-blue-600"
+          />
+          Programar este mismo escaneo de forma recurrente
+        </label>
+        <label className="text-[11px] uppercase tracking-wider text-slate-500">
+          Cada (horas)
+          <input
+            type="number"
+            min="1"
+            max="8760"
+            disabled={!scheduleEnabled}
+            value={scheduleHours}
+            onChange={(e) => setScheduleHours(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white disabled:opacity-40"
+          />
+        </label>
+      </div>
+
       {error && (
         <div className="text-red-400 text-xs bg-red-950/40 border border-red-900/60 p-3.5 rounded-xl">
           {error}
         </div>
       )}
 
-      <div className="flex justify-end">
+      {job && loading && (
+        <div className="space-y-2 rounded-xl border border-blue-900/50 bg-blue-950/20 p-4">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold text-blue-300">{job.phase || job.status}</span>
+            <span className="font-mono text-blue-400">{Number(job.progress || 0).toFixed(1)}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all"
+              style={{ width: `${Math.max(1, job.progress || 0)}%` }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={cancelCurrentJob}
+            className="text-xs font-semibold text-red-400 hover:text-red-300"
+          >
+            Cancelar trabajo
+          </button>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <label className="flex items-start gap-2 text-xs text-slate-400">
+          <input
+            type="checkbox"
+            checked={authorized}
+            onChange={(e) => setAuthorized(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-950 text-blue-600"
+          />
+          Confirmo que tengo autorización para auditar los objetivos indicados.
+        </label>
         <button
           type="submit"
           disabled={loading}

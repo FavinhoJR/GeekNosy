@@ -1,172 +1,210 @@
-# DataGobs
+# DataGobs 2.0
 
-**DataGobs** es una herramienta defensiva y no intrusiva para evaluar la configuración pública de seguridad web de dominios autorizados.
+DataGobs es una plataforma defensiva para auditorías web autorizadas, bug bounty y
+automatización de postura de seguridad. Combina análisis HTTP, TLS y DNS, rutas
+inteligentes, crawling limitado al mismo origen, checks versionados, trabajos
+persistentes, triage y reportes reproducibles.
 
-**Autor:** Favio Urrea  
-**Licencia:** MIT (uso abierto)
+Autor: Favio Urrea
+Licencia: MIT
 
-## Qué evalúa
+## Seguridad operativa
 
-- Certificado SSL/TLS, expiración, emisor, TLS 1.2/1.3
-- Redirección HTTP → HTTPS
-- Cabeceras de seguridad (HSTS, CSP, X-Frame-Options, etc.)
-- Cookies (Secure, HttpOnly, SameSite)
-- DNS básico y CAA
-- Consistencia de headers en respuestas 200, 301/302, 403 y 404
-- Archivos públicos: `security.txt`, `robots.txt`, `sitemap.xml`
+- Confirmación explícita de autorización en cada trabajo.
+- API keys opcionales mediante `DATAGOBS_API_KEYS`.
+- Bloqueo SSRF de loopback, redes privadas, link-local, multicast y direcciones reservadas.
+- Validación DNS y de scope en cada redirección.
+- Solo HTTP/HTTPS y puertos permitidos.
+- Redirecciones limitadas al host autorizado.
+- Límite de respuesta, timeouts, concurrencia y solicitudes por segundo.
+- Cookies y evidencia sensible redactadas.
+- Checks de exposición mediante `HEAD`.
+- Aislamiento de trabajos, escaneos, reportes y triage por propietario/API key.
 
-## Qué NO hace
+Las redes privadas están bloqueadas por defecto. Habilítelas únicamente en un
+worker aislado y autorizado con `DATAGOBS_ALLOW_PRIVATE_TARGETS=true`.
 
-- Explotación de vulnerabilidades
-- Fuerza bruta, fuzzing agresivo o bypass de WAF
-- Autenticación ni scraping masivo
-- Pruebas intrusivas de ningún tipo
+## Capacidades
 
-## Rutas evaluadas (perfiles inteligentes)
+- Certificado, protocolo, cipher, ALPN, SAN y TLS 1.0-1.3.
+- Redirección HTTP a HTTPS.
+- Cabeceras, CSP semántica, CORS, cache y exposición de versiones.
+- Cookies Secure, HttpOnly y SameSite.
+- DNS A, AAAA, MX, NS, CAA, SPF, DMARC y DNSSEC.
+- Detección de WordPress, Joomla, Drupal, Laravel, Django, Node, IIS y APIs.
+- Crawling acotado al mismo origen en perfiles bug bounty/deep.
+- Rutas públicas, tecnológicas, personalizadas y checks de exposición.
+- Plantillas YAML versionadas con firma HMAC opcional.
+- Cola persistente, progreso, cancelación y reintentos operativos.
+- Programación recurrente por intervalos.
+- Triage: nuevo, confirmado, falso positivo, aceptado y resuelto.
+- Historial y comparación por dominio.
+- JSON, JSONL, CSV, PDF, SARIF, Markdown y HTML.
+- Webhook de finalización firmado.
+- Importación de resultados JSONL de Nuclei.
+- CLI y API OpenAPI.
 
-DataGobs usa **perfiles de rutas**. Por defecto trabaja en modo `auto`:
+## Perfiles de intensidad
 
-| Componente | Descripción |
-|------------|-------------|
-| **core** | Rutas públicas básicas (`/`, `robots.txt`, `security.txt`, etc.) |
-| **tecnología detectada** | WordPress, Joomla, Drupal, Laravel, Django, Node, IIS, APIs |
-| **custom_paths** | Rutas agregadas manualmente por el usuario |
+| Perfil | Límite de rutas | Uso |
+|---|---:|---|
+| `passive` | 8 | Evidencia pública mínima |
+| `fast` | 15 | Auditoría rápida |
+| `standard` | 40 | Evaluación general |
+| `bug_bounty` | 80 | Crawling y cobertura ampliada |
+| `deep` | 120 | Auditoría autorizada exhaustiva |
+| `custom` | 120 | Política definida por el operador |
 
-**No evalúa todas las rutas posibles.** Evalúa: rutas base (core) + rutas según tecnología detectada + rutas personalizadas.
+Los perfiles no habilitan explotación, fuerza bruta ni payloads destructivos.
 
-### Perfiles disponibles
-
-`core`, `common`, `wordpress`, `joomla`, `drupal`, `laravel_php`, `django_python`, `node_frontend`, `aspnet_iis`, `api_docs`, `exposure_checks`
-
-### Modos de perfil (`route_profile`)
-
-| Valor | Comportamiento |
-|-------|----------------|
-| `minimal` | Solo core |
-| `standard` / `auto` | Core + tecnología detectada |
-| `advanced` | Core + common + tecnología + api_docs si aplica |
-| `all` | Todos los perfiles (respetando `max_paths_per_domain`) |
-
-Las rutas sensibles (`/.env`, `/.git/config`, backups, etc.) solo se evalúan con **HEAD** y metadatos si activas `include_exposure_checks`. Nunca se descarga ni muestra contenido sensible.
-
-Consulta perfiles y rutas: `GET /api/info`
-
-## Modos de puntuación
-
-| Modo | Composición |
-|------|-------------|
-| **Estándar** | SSL/TLS 45% + Headers 55% |
-| **Avanzado** | SSL 30% + Headers 40% + Cookies 10% + DNS 10% + Consistencia 10% |
-
-Nota del 1 al 10 (10 = más alta, 1 = más baja), derivada del puntaje 0-100
-
-La nota global se calcula **solo** con la URL del sitio principal (respuesta 200 en `/`). Las rutas 403/404 se reportan por separado; si una 403 no tiene headers, se marca como *inconsistencia en página bloqueada*, no como fallo del sitio principal.
-
-## Inicio rápido con Docker
+## Inicio con Docker
 
 ```bash
-cd DataGobs
+copy .env.example .env
+# Edite .env y cambie las credenciales.
 docker compose up --build -d
 ```
 
-Abra **http://localhost:3000**
+Abra `http://localhost:3000`.
 
-### Ejemplo de escaneo por API
+La arquitectura de producción incluye:
 
-```bash
-curl -X POST http://localhost:3000/api/scan \
-  -H "Content-Type: application/json" \
-  -d '{
-    "domains": ["example.com"],
-    "institution": "Mi Institución",
-    "mode": "advanced",
-    "route_profile": "auto",
-    "include_default_paths": true,
-    "include_exposure_checks": false,
-    "max_paths_per_domain": 40,
-    "custom_paths": ["/portal/", "/transparencia/"]
-  }'
-```
+- Nginx + React
+- FastAPI
+- Worker persistente
+- PostgreSQL
 
-### Exportar reportes
+## Desarrollo
 
-```bash
-# JSON
-curl -O http://localhost:3000/api/reports/1/json
-
-# CSV
-curl -O http://localhost:3000/api/reports/1/csv
-
-# PDF
-curl -O http://localhost:3000/api/reports/1/pdf
-```
-
-## Desarrollo local
-
-### Backend (Python 3.11+)
+Backend:
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-mkdir -p data
+.venv\Scripts\activate
+pip install -r requirements-dev.txt
+pytest -q
 uvicorn app.main:app --reload --port 8000
 ```
 
-### Frontend
+Frontend:
 
 ```bash
 cd frontend
-npm install
-npm run dev
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
-Frontend en http://localhost:5173 (proxy API → :8000)
+## API de trabajos
 
-## Estructura del proyecto
+Crear un trabajo:
 
-```
-DataGobs/
-├── backend/          # FastAPI + scanner + SQLite
-├── frontend/         # React + Tailwind
-├── examples/         # Reporte JSON de ejemplo
-├── docker-compose.yml
-└── README.md
+```bash
+curl -X POST http://localhost:3000/api/jobs ^
+  -H "Content-Type: application/json" ^
+  -H "X-API-Key: YOUR_KEY" ^
+  -d "{\"request\":{\"domains\":[\"example.com\"],\"authorization_confirmed\":true,\"mode\":\"advanced\",\"intensity\":\"bug_bounty\",\"route_profile\":\"auto\",\"max_paths_per_domain\":80}}"
 ```
 
-## API principal
+Consultar y cancelar:
 
-| Método | Ruta | Descripción |
-|--------|------|-------------|
-| GET | `/api/health` | Estado del servicio |
-| GET | `/api/info` | Información y rutas por defecto |
-| POST | `/api/scan` | Ejecutar escaneo |
-| GET | `/api/scans` | Listar escaneos (filtros: search, grade, comparison_status) |
-| GET | `/api/scans/{id}` | Detalle de escaneo |
-| GET | `/api/scans/{id}/history` | Historial del dominio |
-| GET | `/api/reports/{id}/json` | Exportar JSON |
-| GET | `/api/reports/{id}/csv` | Exportar CSV |
-| GET | `/api/reports/{id}/pdf` | Exportar PDF |
+```bash
+curl -H "X-API-Key: YOUR_KEY" http://localhost:3000/api/jobs/JOB_ID
+curl -X POST -H "X-API-Key: YOUR_KEY" http://localhost:3000/api/jobs/JOB_ID/cancel
+```
 
-## Ejemplo de reporte
+El endpoint histórico `POST /api/scan` continúa disponible para compatibilidad,
+pero las automatizaciones deben usar `/api/jobs`.
 
-Ver [`examples/sample-report.json`](examples/sample-report.json).
+## CLI
 
-## Recomendaciones por hallazgo
+Desde `backend`:
 
-Cada hallazgo incluye título, recomendación técnica y severidad. Ejemplos:
+```bash
+python -m app.cli --api-key YOUR_KEY scan example.com --authorized --intensity bug_bounty --wait
+python -m app.cli --api-key YOUR_KEY jobs
+python -m app.cli --api-key YOUR_KEY report 1 sarif --output result.sarif
+```
 
-- **missing_csp** → Definir Content-Security-Policy restrictiva
-- **blocked_page_inconsistency** → Las páginas 403 deben incluir las mismas cabeceras que el sitio principal
-- **cookie_no_secure** → Activar flag Secure en cookies HTTPS
+También puede definir `DATAGOBS_API_KEY`.
 
-Lista completa en `backend/app/recommendations.py`.
+## Programación y webhooks
 
-## Publicar en GitHub (repositorio privado)
+`POST /api/schedules` recibe:
 
-1. Instala [Git](https://git-scm.com/) y [GitHub CLI](https://cli.github.com/) si no los tienes.
-2. Inicia sesión: `gh auth login`
-3. Desde la carpeta del proyecto ejecuta:
+```json
+{
+  "name": "Auditoría diaria",
+  "interval_minutes": 1440,
+  "request": {
+    "domains": ["example.com"],
+    "authorization_confirmed": true,
+    "intensity": "standard"
+  }
+}
+```
 
+Configure `DATAGOBS_WEBHOOK_URL` y `DATAGOBS_WEBHOOK_SECRET` para recibir el
+resultado del trabajo. La firma SHA-256 se envía en `X-DataGobs-Signature`.
 
+## Plantillas
+
+Las plantillas viven en `backend/app/checks/templates/`:
+
+```yaml
+id: example-check
+name: Ejemplo
+version: 1.0.0
+severity: low
+confidence: high
+intrusiveness: passive
+minimum_intensity: passive
+recommendation: Descripción de remediación.
+references:
+  - CWE-200
+match:
+  path_regex: ^/example$
+  status: 200
+```
+
+Si configura `DATAGOBS_TEMPLATE_SIGNING_SECRET`, solo se cargarán plantillas con
+firma HMAC válida.
+
+## Nuclei
+
+DataGobs no ejecuta automáticamente plantillas comunitarias. Puede ejecutar
+Nuclei con su propia política de scope/rate limit y después importar JSONL:
+
+```bash
+curl -X POST http://localhost:3000/api/imports/nuclei/SCAN_ID ^
+  -H "X-API-Key: YOUR_KEY" ^
+  -F "file=@nuclei.jsonl"
+```
+
+Los hallazgos quedan normalizados, deduplicados y disponibles para triage y SARIF.
+
+## Endpoints principales
+
+| Método | Ruta |
+|---|---|
+| GET | `/api/health` |
+| GET | `/api/info` |
+| POST/GET | `/api/jobs` |
+| GET | `/api/jobs/{id}` |
+| POST | `/api/jobs/{id}/cancel` |
+| GET/POST/PATCH/DELETE | `/api/schedules` |
+| GET | `/api/scans` |
+| GET/DELETE | `/api/scans/{id}` |
+| GET/PATCH | `/api/scans/{id}/findings` |
+| GET | `/api/reports/{id}/{format}` |
+| POST | `/api/imports/nuclei/{scan_id}` |
+
+## Calidad
+
+- Suite pytest para scope/SSRF, plugins, crawling, scoring y API.
+- Build reproducible del frontend con lockfile.
+- CI para backend, frontend y contenedores.
+- Contenedor backend sin privilegios root.
+
+DataGobs debe utilizarse exclusivamente sobre activos propios o con autorización
+expresa del propietario.

@@ -3,6 +3,38 @@ import { Route, Routes } from 'react-router-dom'
 import Dashboard from './components/Dashboard'
 import ScanDetail from './components/ScanDetail'
 import ScanForm from './components/ScanForm'
+import { api } from './api/client'
+
+function ApiKeyControl() {
+  const [value, setValue] = useState('')
+  const [configured, setConfigured] = useState(api.hasApiKey())
+
+  const save = () => {
+    api.setApiKey(value.trim())
+    setConfigured(Boolean(value.trim()))
+    setValue('')
+    window.location.reload()
+  }
+
+  return (
+    <div className="ml-auto flex items-center gap-2">
+      <input
+        type="password"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        placeholder={configured ? 'API key configurada' : 'API key (si aplica)'}
+        className="w-28 rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-white sm:w-44"
+      />
+      <button
+        type="button"
+        onClick={save}
+        className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300"
+      >
+        Guardar
+      </button>
+    </div>
+  )
+}
 
 function Layout({ children }) {
   return (
@@ -16,8 +48,9 @@ function Layout({ children }) {
             </h1>
             <p className="text-slate-400 text-xs">Evaluación defensiva de seguridad web pública</p>
           </div>
-          <div className="ml-auto text-xs text-slate-400 bg-slate-800/50 px-3 py-1 rounded-full border border-slate-700/55">
-            v1.0 · Favio Urrea · Uso abierto
+          <ApiKeyControl />
+          <div className="hidden lg:block text-xs text-slate-400 bg-slate-800/50 px-3 py-1 rounded-full border border-slate-700/55">
+            v2.0 · Favio Urrea · Uso abierto
           </div>
         </div>
       </header>
@@ -26,9 +59,9 @@ function Layout({ children }) {
       
       <footer className="text-center text-xs text-slate-500 py-8 border-t border-slate-900 mt-12 bg-slate-900/30 space-y-2">
         <div className="max-w-3xl mx-auto px-4">
-          DataGobs — Solo evalúa configuración HTTP/HTTPS/DNS pública visible. Sin explotación ni pruebas intrusivas.
+          DataGobs — Auditoría autorizada con perfiles pasivos y activos controlados.
         </div>
-        <div className="text-slate-400 font-medium">v1.0 · Favio Urrea · Uso abierto</div>
+        <div className="text-slate-400 font-medium">v2.0 · Favio Urrea · Uso abierto</div>
       </footer>
     </div>
   )
@@ -53,7 +86,7 @@ function HomePage() {
               </span>
               <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Nuevo Escaneo</h2>
               <p className="text-slate-400 text-sm max-w-xl">
-                Configure los parámetros para evaluar la seguridad de los dominios especificados de manera completamente pasiva.
+                Configure alcance, intensidad y límites para una auditoría autorizada y reproducible.
               </p>
             </div>
             

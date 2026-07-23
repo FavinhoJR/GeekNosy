@@ -151,6 +151,61 @@ RECOMMENDATIONS: dict[str, dict] = {
         "recommendation": "Aplique las mismas cabeceras de seguridad en todas las rutas públicas, no solo en la página principal.",
         "severity": "low",
     },
+    "weak_csp": {
+        "title": "Content-Security-Policy permisiva",
+        "recommendation": "Elimine comodines y unsafe-inline; utilice nonces o hashes y una allowlist mínima.",
+        "severity": "medium",
+    },
+    "legacy_tls_enabled": {
+        "title": "TLS 1.0 o TLS 1.1 habilitado",
+        "recommendation": "Deshabilite TLS 1.0/1.1 y mantenga únicamente TLS 1.2 y 1.3.",
+        "severity": "high",
+    },
+    "dns_unresolved": {
+        "title": "Dominio sin resolución A/AAAA",
+        "recommendation": "Revise la delegación y los registros A/AAAA del dominio.",
+        "severity": "high",
+    },
+    "no_spf": {
+        "title": "Sin política SPF detectable",
+        "recommendation": "Publique un registro SPF que autorice únicamente los emisores de correo legítimos.",
+        "severity": "medium",
+    },
+    "no_dmarc": {
+        "title": "Sin política DMARC detectable",
+        "recommendation": "Publique una política DMARC y avance gradualmente hacia quarantine o reject.",
+        "severity": "medium",
+    },
+    "no_dnssec": {
+        "title": "DNSSEC no detectable",
+        "recommendation": "Considere firmar la zona con DNSSEC y publicar el registro DS en el registrador.",
+        "severity": "low",
+    },
+    "cors_wildcard_credentials": {
+        "title": "Política CORS peligrosa",
+        "recommendation": "No combine credenciales con orígenes comodín; use una allowlist explícita.",
+        "severity": "high",
+    },
+    "sensitive_cacheable_response": {
+        "title": "Respuesta sensible potencialmente almacenable",
+        "recommendation": "Use Cache-Control: no-store para páginas autenticadas o con información sensible.",
+        "severity": "medium",
+    },
+    "source_map_reference": {
+        "title": "Source map referenciado públicamente",
+        "recommendation": "Retire source maps de producción o restrinja su acceso.",
+        "severity": "low",
+    },
+    "server_version_exposed": {
+        "title": "Versión exacta del servidor expuesta",
+        "recommendation": "Reduzca la información de versión incluida en la cabecera Server.",
+        "severity": "low",
+    },
+    "security_txt_missing_template": {
+        "title": "security.txt no disponible",
+        "recommendation": "Publique /.well-known/security.txt conforme a RFC 9116.",
+        "severity": "low",
+    },
 }
 
 

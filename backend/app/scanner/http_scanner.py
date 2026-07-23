@@ -1,12 +1,18 @@
 """Escaneo HTTP/HTTPS no intrusivo."""
 
 import asyncio
+import hashlib
+import time
+from collections import defaultdict
+from contextlib import asynccontextmanager
+from collections.abc import Awaitable, Callable
 from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from app.config import settings
 from app.scanner.route_selector import is_exposure_path
+from app.target_policy import TargetPolicyError, validate_url
 
 RESPONSE_TYPE_MAP = {
     200: "main",
@@ -18,6 +24,31 @@ RESPONSE_TYPE_MAP = {
     403: "blocked",
     404: "not_found",
 }
+
+
+class NetworkRateLimiter:
+    def __init__(self):
+        self._global = asyncio.Semaphore(settings.max_concurrent_requests)
+        self._hosts: dict[str, asyncio.Semaphore] = defaultdict(
+            lambda: asyncio.Semaphore(settings.max_concurrent_per_host)
+        )
+        self._last_request: dict[str, float] = {}
+        self._lock = asyncio.Lock()
+
+    @asynccontextmanager
+    async def slot(self, host: str, requests_per_second: float | None = None):
+        rate = requests_per_second or settings.per_host_requests_per_second
+        async with self._global, self._hosts[host]:
+            async with self._lock:
+                now = time.monotonic()
+                delay = max(0.0, self._last_request.get(host, 0.0) + (1 / rate) - now)
+                if delay:
+                    await asyncio.sleep(delay)
+                self._last_request[host] = time.monotonic()
+            yield
+
+
+network_limiter = NetworkRateLimiter()
 
 
 def normalize_domain(domain: str) -> str:
@@ -86,6 +117,8 @@ async def fetch_path(
     method: str = "GET",
     max_redirects: int | None = None,
     capture_body_preview: bool = False,
+    authorized_host: str | None = None,
+    requests_per_second: float | None = None,
 ) -> dict:
     """
     Solicitud HTTP/HTTPS defensiva (GET o HEAD).
@@ -110,63 +143,89 @@ async def fetch_path(
     content_type = None
     content_length = None
     body_preview = ""
+    body_sha256 = None
+    body_bytes_read = 0
+    resolved_ips: list[str] = []
+    duration_ms = 0.0
+    started = time.perf_counter()
 
     try:
         async with httpx.AsyncClient(
             timeout=timeout,
             follow_redirects=False,
             verify=True,
+            transport=httpx.AsyncHTTPTransport(retries=2),
             headers={"User-Agent": settings.user_agent},
         ) as client:
             current = url
             hops = 0
             while hops <= max_hops:
+                validated = await validate_url(current, expected_host=authorized_host)
+                authorized_host = authorized_host or validated.hostname
+                resolved_ips = list(validated.resolved_ips)
+                current = validated.normalized_url
                 req_method = method if hops == 0 else "GET"
                 if exposure:
                     req_method = "HEAD"
 
-                resp = await client.request(req_method, current)
-                redirect_chain.append(
-                    {
-                        "url": str(current),
-                        "status_code": resp.status_code,
-                        "location": resp.headers.get("location"),
-                    }
-                )
-                if (
-                    follow_redirects
-                    and resp.status_code in (301, 302, 303, 307, 308)
-                    and resp.headers.get("location")
-                    and hops < max_hops
+                async with network_limiter.slot(
+                    validated.hostname, requests_per_second
                 ):
-                    current = urljoin(str(current), resp.headers["location"])
-                    hops += 1
-                    continue
+                    async with client.stream(req_method, current) as resp:
+                        redirect_chain.append(
+                            {
+                                "url": str(current),
+                                "status_code": resp.status_code,
+                                "location": resp.headers.get("location"),
+                                "resolved_ips": list(validated.resolved_ips),
+                            }
+                        )
+                        if (
+                            follow_redirects
+                            and resp.status_code in (301, 302, 303, 307, 308)
+                            and resp.headers.get("location")
+                            and hops < max_hops
+                        ):
+                            current = urljoin(str(current), resp.headers["location"])
+                            hops += 1
+                            continue
 
-                status_code = resp.status_code
-                final_url = str(resp.url) if hasattr(resp, "url") else str(current)
-                headers_found = normalize_headers(resp.headers)
-                content_type = headers_found.get("content-type")
-                cl = headers_found.get("content-length")
-                content_length = int(cl) if cl and cl.isdigit() else None
+                        status_code = resp.status_code
+                        final_url = str(resp.url)
+                        headers_found = normalize_headers(resp.headers)
+                        content_type = headers_found.get("content-type")
+                        cl = headers_found.get("content-length")
+                        content_length = int(cl) if cl and cl.isdigit() else None
 
-                set_cookies = []
-                if hasattr(resp.headers, "get_list"):
-                    set_cookies = resp.headers.get_list("set-cookie")
-                elif "set-cookie" in headers_found:
-                    set_cookies = [headers_found["set-cookie"]]
-                cookies = parse_cookies(set_cookies)
+                        set_cookies = (
+                            resp.headers.get_list("set-cookie")
+                            if hasattr(resp.headers, "get_list")
+                            else []
+                        )
+                        cookies = parse_cookies(set_cookies)
 
-                if capture_body_preview and method == "GET" and not exposure:
-                    try:
-                        text = resp.text[: settings.max_body_preview]
-                        body_preview = text
-                    except Exception:
-                        body_preview = ""
-                break
-    except httpx.HTTPError as e:
+                        if req_method == "GET" and not exposure:
+                            chunks = bytearray()
+                            async for chunk in resp.aiter_bytes():
+                                remaining = settings.max_response_bytes - len(chunks)
+                                if remaining <= 0:
+                                    break
+                                chunks.extend(chunk[:remaining])
+                                if len(chunks) >= settings.max_response_bytes:
+                                    break
+                            body_bytes_read = len(chunks)
+                            body_sha256 = hashlib.sha256(chunks).hexdigest()
+                            if capture_body_preview:
+                                encoding = resp.encoding or "utf-8"
+                                body_preview = bytes(chunks[: settings.max_body_preview]).decode(
+                                    encoding, errors="replace"
+                                )
+                        break
+    except (httpx.HTTPError, TargetPolicyError, ValueError) as e:
         error = str(e)
         status_code = 0
+    finally:
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
 
     response_type = classify_response(status_code)
     if path in ("/", "") and status_code == 200:
@@ -186,6 +245,10 @@ async def fetch_path(
         "content_length": content_length,
         "method": method if not exposure else "HEAD",
         "body_preview": body_preview if capture_body_preview else None,
+        "body_sha256": body_sha256,
+        "body_bytes_read": body_bytes_read,
+        "resolved_ips": resolved_ips,
+        "duration_ms": duration_ms,
         "error": error,
     }
 
@@ -199,28 +262,50 @@ async def fetch_paths_batch(
     domain: str,
     path_items: list[tuple[str, str]],
     skip_paths: set[str] | None = None,
+    requests_per_second: float | None = None,
+    cancel_callback: Callable[[], Awaitable[bool] | bool] | None = None,
 ) -> list[dict]:
     """Evalúa rutas con rate limit entre solicitudes."""
     base = build_base_url(domain)
     skip_paths = skip_paths or set()
-    results: list[dict] = []
-
+    jobs = []
     for path, profile in path_items:
         norm = path if path.startswith("/") else f"/{path}"
         if norm in skip_paths:
             continue
         url = base.rstrip("/") + (norm if norm != "/" else "/")
         capture_body = norm in ("/", "")
-        result = await fetch_path(
-            url,
-            path=norm,
-            profile=profile,
-            capture_body_preview=capture_body,
+        jobs.append(
+            {
+                "url": url,
+                "path": norm,
+                "profile": profile,
+                "capture_body_preview": capture_body,
+            }
         )
-        result["_domain"] = domain
-        results.append(result)
-        await asyncio.sleep(settings.path_rate_limit_ms / 1000.0)
 
+    results = []
+    for offset in range(0, len(jobs), settings.max_concurrent_per_host):
+        if cancel_callback:
+            state = cancel_callback()
+            if asyncio.iscoroutine(state):
+                state = await state
+            if state:
+                raise asyncio.CancelledError("Cancelación solicitada")
+        batch = await asyncio.gather(*[
+            fetch_path(
+                item["url"],
+                path=item["path"],
+                profile=item["profile"],
+                capture_body_preview=item["capture_body_preview"],
+                authorized_host=normalize_domain(domain),
+                requests_per_second=requests_per_second,
+            )
+            for item in jobs[offset : offset + settings.max_concurrent_per_host]
+        ])
+        for result in batch:
+            result["_domain"] = domain
+            results.append(result)
     return results
 
 
@@ -231,7 +316,6 @@ async def check_http_to_https_redirect(domain: str) -> dict:
         async with httpx.AsyncClient(
             timeout=settings.scan_timeout,
             follow_redirects=False,
-            verify=False,
             headers={"User-Agent": settings.user_agent},
         ) as client:
             resp = await client.get(http_url)
