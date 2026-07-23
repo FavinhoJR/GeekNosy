@@ -8,6 +8,11 @@ from fastapi.staticfiles import StaticFiles
 from app import __author__, __version__
 from app.api.reports import router as reports_router
 from app.api.routes import router as scans_router
+from app.api.jobs import router as jobs_router
+from app.api.findings import router as findings_router
+from app.api.schedules import router as schedules_router
+from app.api.imports import router as imports_router
+from app.config import settings
 from app.database import init_db
 
 
@@ -26,14 +31,18 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(scans_router)
 app.include_router(reports_router)
+app.include_router(jobs_router)
+app.include_router(findings_router)
+app.include_router(schedules_router)
+app.include_router(imports_router)
 
 
 @app.get("/api/health")
@@ -78,6 +87,9 @@ async def info():
             "route_profile": ROUTE_PROFILE_MODES,
             "include_exposure_checks": "Solo metadatos HEAD; nunca descarga contenido sensible",
             "max_paths_per_domain_default": settings.max_paths_per_domain_default,
+            "intensity": ["passive", "fast", "standard", "bug_bounty", "deep", "custom"],
+            "authorization_confirmation_required": settings.require_authorization_confirmation,
+            "api_key_required": bool(settings.api_keys),
         },
         "modes": ["standard", "advanced"],
         "restrictions": [
@@ -86,7 +98,17 @@ async def info():
             "Solo GET/HEAD públicos",
             "Sin autenticación ni payloads",
             "Rutas sensibles: solo status, headers y content-type/length",
+            "Bloqueo SSRF de loopback, redes privadas, link-local y metadata cloud",
+            "Redirecciones limitadas al host autorizado",
         ],
+        "automation": {
+            "persistent_jobs": True,
+            "progress_and_cancellation": True,
+            "schedules": True,
+            "webhooks": bool(settings.webhook_url),
+            "exports": ["json", "jsonl", "csv", "pdf", "sarif", "markdown", "html"],
+            "external_imports": ["nuclei-jsonl"],
+        },
     }
 
 

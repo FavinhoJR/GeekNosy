@@ -1,0 +1,15 @@
+id: security_txt_missing_template
+name: security.txt no disponible
+version: 1.0.0
+severity: low
+confidence: high
+intrusiveness: passive
+minimum_intensity: passive
+recommendation: Publique /.well-known/security.txt conforme a RFC 9116.
+references:
+  - RFC-9116
+match:
+  path_regex: ^/\.well-known/security\.txt$
+  status:
+    - 0
+    - 404

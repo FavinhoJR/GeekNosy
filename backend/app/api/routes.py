@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
@@ -11,10 +10,14 @@ from app.database import get_db
 from app.models import Scan, ScanResult
 from app.recommendations import get_recommendations
 from app.schemas import ScanOut, ScanRequest, ScanResultOut, ScanSummary
-from app.scanner import run_full_scan
-from app.scanner.scoring import build_score_explanation, score_to_grade
+from app.scan_service import execute_scan_request
+from app.security import require_api_key
 
-router = APIRouter(prefix="/api", tags=["scans"])
+router = APIRouter(
+    prefix="/api",
+    tags=["scans"],
+    dependencies=[Depends(require_api_key)],
+)
 
 
 def _result_to_out(r: ScanResult) -> ScanResultOut:
@@ -63,6 +66,8 @@ def _scan_to_out(scan: Scan) -> ScanOut:
         institution=scan.institution,
         domain=scan.domain,
         mode=normalize_mode(scan.mode),
+        intensity=scan.intensity or "standard",
+        job_id=scan.job_id,
         route_profile=scan.route_profile,
         include_exposure_checks=scan.include_exposure_checks or False,
         max_paths_per_domain=scan.max_paths_per_domain,
@@ -81,6 +86,7 @@ def _scan_to_out(scan: Scan) -> ScanOut:
         dns_score=scan.dns_score,
         consistency_score=scan.consistency_score,
         findings=findings,
+        finding_details=scan.get_finding_details(),
         recommendations=get_recommendations(findings),
         tech_detection=meta.get("tech_detection"),
         route_selection=meta.get("route_selection"),
@@ -122,120 +128,16 @@ async def _get_previous_scan(db: AsyncSession, domain: str, current_id: int | No
 
 
 @router.post("/scan", response_model=list[ScanOut])
-async def create_scan(request: ScanRequest, db: AsyncSession = Depends(get_db)):
-    outputs = []
-    for raw_domain in request.domains:
-        domain = raw_domain.strip().replace("https://", "").replace("http://", "").split("/")[0]
-
-        scan_data = await run_full_scan(
-            domain=domain,
-            mode=request.mode,
-            custom_paths=request.custom_paths,
-            include_default_paths=request.include_default_paths,
-            route_profile=request.route_profile,
-            include_exposure_checks=request.include_exposure_checks,
-            max_paths_per_domain=request.max_paths_per_domain,
-        )
-
-        previous = await _get_previous_scan(db, domain)
-        comparison_status = None
-        score_delta = None
-        previous_score = None
-
-        if previous:
-            previous_score = previous.overall_score
-            score_delta = round(scan_data["overall_score"] - previous_score, 2)
-            if score_delta > 0:
-                comparison_status = "greater"
-            elif score_delta < 0:
-                comparison_status = "less"
-            else:
-                comparison_status = "equal"
-
-        explanation = build_score_explanation(
-            scan_data["overall_score"],
-            previous_score,
-            comparison_status or "equal",
-            scan_data["findings"],
-        )
-
-        scan = Scan(
-            institution=request.institution,
-            domain=domain,
-            mode=request.mode,
-            route_profile=scan_data.get("route_profile"),
-            include_exposure_checks=scan_data.get("include_exposure_checks", False),
-            max_paths_per_domain=scan_data.get("max_paths_per_domain"),
-            overall_score=scan_data["overall_score"],
-            overall_grade=scan_data["overall_grade"],
-            scoring_url=scan_data["scoring_url"],
-            scoring_http_code=scan_data["scoring_http_code"],
-            comparison_status=comparison_status,
-            score_delta=score_delta,
-            previous_score=previous_score,
-            score_explanation=explanation,
-            tls_score=scan_data["tls_score"],
-            headers_score=scan_data["headers_score"],
-            cookies_score=scan_data["cookies_score"],
-            dns_score=scan_data["dns_score"],
-            consistency_score=scan_data["consistency_score"],
-            tls_evidence_json=json.dumps(scan_data["tls_evidence"], default=str),
-            dns_evidence_json=json.dumps(scan_data["dns_evidence"], default=str),
-        )
-        scan.set_findings(scan_data["findings"])
-        scan.set_route_meta(
-            scan_data.get("tech_detection", {}),
-            scan_data.get("route_selection", {}),
-        )
-        db.add(scan)
-        await db.flush()
-
-        for r in scan_data["results"]:
-            from app.config import ADVANCED_SECURITY_HEADERS, SECURITY_HEADERS
-
-            check_list = (
-                ADVANCED_SECURITY_HEADERS if request.mode == "advanced" else SECURITY_HEADERS
-            )
-            missing = r.get("missing_headers") or [
-                h for h in check_list if h not in r.get("headers", {})
-            ]
-
-            sr = ScanResult(
-                scan_id=scan.id,
-                domain=domain,
-                url_evaluated=r["url_evaluated"],
-                final_url=r.get("final_url"),
-                http_code=r.get("http_code", 0),
-                response_type=r.get("response_type", "unknown"),
-                score=r.get("score", 0),
-                grade=r.get("grade", score_to_grade(r.get("score", 0))),
-                is_scoring_source=r.get("is_scoring_source", False),
-                notes=r.get("notes"),
-            )
-            sr.set_headers(r.get("headers", {}))
-            sr.set_missing_headers(missing)
-            sr.set_redirect_chain(r.get("redirect_chain", []))
-            sr.set_cookies(r.get("cookies", []))
-            sr.set_evidence(
-                {
-                    "path": r.get("path"),
-                    "profile": r.get("profile"),
-                    "response_type": r.get("response_type"),
-                    "error": r.get("error"),
-                    "content_type": r.get("content_type"),
-                    "content_length": r.get("content_length"),
-                    "severity": r.get("severity"),
-                    "finding_key": r.get("finding_key"),
-                    "method": r.get("method"),
-                    "exposure_check": r.get("evidence", {}).get("exposure_check"),
-                }
-            )
-            db.add(sr)
-
-        await db.refresh(scan, ["results"])
-        outputs.append(_scan_to_out(scan))
-
-    return outputs
+async def create_scan(
+    request: ScanRequest,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    try:
+        scans = await execute_scan_request(request, db, owner=identity)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [_scan_to_out(scan) for scan in scans]
 
 
 @router.get("/scans", response_model=list[ScanSummary])
@@ -245,8 +147,14 @@ async def list_scans(
     comparison_status: str | None = Query(None),
     mode: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
 ):
-    q = select(Scan).options(selectinload(Scan.results)).order_by(Scan.created_at.desc())
+    q = (
+        select(Scan)
+        .options(selectinload(Scan.results))
+        .where(Scan.owner == identity)
+        .order_by(Scan.created_at.desc())
+    )
     result = await db.execute(q)
     scans = result.scalars().all()
 
@@ -279,6 +187,8 @@ async def list_scans(
                 institution=scan.institution,
                 domain=scan.domain,
                 mode=normalized_mode,
+                intensity=scan.intensity or "standard",
+                job_id=scan.job_id,
                 created_at=scan.created_at,
                 overall_score=scan.overall_score,
                 overall_grade=normalized_grade,
@@ -299,8 +209,16 @@ async def list_scans(
 
 
 @router.get("/scans/{scan_id}", response_model=ScanOut)
-async def get_scan(scan_id: int, db: AsyncSession = Depends(get_db)):
-    q = select(Scan).options(selectinload(Scan.results)).where(Scan.id == scan_id)
+async def get_scan(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    q = (
+        select(Scan)
+        .options(selectinload(Scan.results))
+        .where(Scan.id == scan_id, Scan.owner == identity)
+    )
     result = await db.execute(q)
     scan = result.scalar_one_or_none()
     if not scan:
@@ -309,8 +227,12 @@ async def get_scan(scan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/scans/{scan_id}/history", response_model=list[ScanSummary])
-async def get_scan_history(scan_id: int, db: AsyncSession = Depends(get_db)):
-    q = select(Scan).where(Scan.id == scan_id)
+async def get_scan_history(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    q = select(Scan).where(Scan.id == scan_id, Scan.owner == identity)
     result = await db.execute(q)
     current = result.scalar_one_or_none()
     if not current:
@@ -320,6 +242,7 @@ async def get_scan_history(scan_id: int, db: AsyncSession = Depends(get_db)):
         select(Scan)
         .options(selectinload(Scan.results))
         .where(Scan.domain == current.domain)
+        .where(Scan.owner == identity)
         .order_by(Scan.created_at.desc())
     )
     result2 = await db.execute(q2)
@@ -331,6 +254,8 @@ async def get_scan_history(scan_id: int, db: AsyncSession = Depends(get_db)):
             institution=s.institution,
             domain=s.domain,
             mode=normalize_mode(s.mode),
+            intensity=s.intensity or "standard",
+            job_id=s.job_id,
             created_at=s.created_at,
             overall_score=s.overall_score,
             overall_grade=normalize_grade(s.overall_grade, s.overall_score),
@@ -345,8 +270,12 @@ async def get_scan_history(scan_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.delete("/scans/{scan_id}")
-async def delete_scan(scan_id: int, db: AsyncSession = Depends(get_db)):
-    q = select(Scan).where(Scan.id == scan_id)
+async def delete_scan(
+    scan_id: int,
+    db: AsyncSession = Depends(get_db),
+    identity: str = Depends(require_api_key),
+):
+    q = select(Scan).where(Scan.id == scan_id, Scan.owner == identity)
     result = await db.execute(q)
     scan = result.scalar_one_or_none()
     if not scan:

@@ -119,6 +119,7 @@ export default function Dashboard({ refreshKey }) {
                 <tr className="bg-slate-950/60 border-b border-slate-800 text-slate-400 text-left text-xs uppercase tracking-wider">
                   <th className="px-4 py-3 font-semibold">Institución</th>
                   <th className="px-4 py-3 font-semibold">Dominio</th>
+                  <th className="px-4 py-3 font-semibold">Intensidad</th>
                   <th className="px-4 py-3 font-semibold">URL nota</th>
                   <th className="px-4 py-3 font-semibold text-center">HTTP</th>
                   <th className="px-4 py-3 font-semibold">Nota</th>
@@ -139,6 +140,7 @@ export default function Dashboard({ refreshKey }) {
                     <tr key={scan.id} className="hover:bg-slate-900/40 transition-colors">
                       <td className="px-4 py-3.5 text-slate-350">{scan.institution || '—'}</td>
                       <td className="px-4 py-3.5 font-bold text-white tracking-tight">{scan.domain}</td>
+                      <td className="px-4 py-3.5 text-xs text-cyan-400 font-semibold">{scan.intensity || 'standard'}</td>
                       <td className="px-4 py-3.5 max-w-[180px] truncate font-mono text-xs text-slate-400" title={scan.scoring_url}>
                         {scan.scoring_url ? new URL(scan.scoring_url).pathname || '/' : '—'}
                       </td>

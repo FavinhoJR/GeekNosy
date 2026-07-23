@@ -22,15 +22,31 @@ export default function ScanDetail() {
   const { id } = useParams()
   const [scan, setScan] = useState(null)
   const [history, setHistory] = useState([])
+  const [findings, setFindings] = useState([])
   const [loading, setLoading] = useState(true)
+  const [exportError, setExportError] = useState(null)
+
+  const handleExport = async (format) => {
+    setExportError(null)
+    try {
+      await api.downloadReport(id, format)
+    } catch (error) {
+      setExportError(error.message)
+    }
+  }
 
   useEffect(() => {
     async function load() {
       setLoading(true)
       try {
-        const [s, h] = await Promise.all([api.getScan(id), api.getHistory(id)])
+        const [s, h, f] = await Promise.all([
+          api.getScan(id),
+          api.getHistory(id),
+          api.listFindings(id),
+        ])
         setScan(s)
         setHistory(h)
+        setFindings(f)
       } catch {
         setScan(null)
       } finally {
@@ -65,6 +81,13 @@ export default function ScanDetail() {
   }
 
   const scoringResult = scan.results?.find((r) => r.is_scoring_source)
+
+  const updateTriage = async (fingerprint, status) => {
+    const updated = await api.updateFinding(scan.id, fingerprint, { status, notes: null })
+    setFindings((items) => items.map((item) => (
+      item.fingerprint === fingerprint ? updated : item
+    )))
+  }
 
   return (
     <div className="space-y-8 max-w-5xl mx-auto py-2">
@@ -107,16 +130,17 @@ export default function ScanDetail() {
 
         {/* Actions bar */}
         <div className="flex flex-wrap gap-2.5 pt-2 border-t border-slate-800/80">
-          <a href={api.exportJson(scan.id)} className="px-4 py-2 text-xs font-semibold bg-slate-850 hover:bg-slate-800 border border-slate-700/30 text-slate-200 rounded-lg transition-all">
-            Exportar JSON
-          </a>
-          <a href={api.exportCsv(scan.id)} className="px-4 py-2 text-xs font-semibold bg-slate-850 hover:bg-slate-800 border border-slate-700/30 text-slate-200 rounded-lg transition-all">
-            Exportar CSV
-          </a>
-          <a href={api.exportPdf(scan.id)} className="px-4 py-2 text-xs font-semibold bg-slate-850 hover:bg-slate-800 border border-slate-700/30 text-slate-200 rounded-lg transition-all">
-            Exportar PDF
-          </a>
+          {['json', 'csv', 'pdf', 'jsonl', 'sarif', 'markdown', 'html'].map((format) => (
+            <button
+              key={format}
+              onClick={() => handleExport(format)}
+              className="px-4 py-2 text-xs font-semibold uppercase bg-slate-850 hover:bg-slate-800 border border-slate-700/30 text-slate-200 rounded-lg transition-all"
+            >
+              {format}
+            </button>
+          ))}
         </div>
+        {exportError && <p className="text-xs text-red-400">{exportError}</p>}
 
         {/* Sub-Scores Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2 text-center">
@@ -274,6 +298,35 @@ export default function ScanDetail() {
       </div>
 
       {/* Recommendations */}
+      {findings.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <h2 className="font-bold text-white text-lg">Triage de Hallazgos</h2>
+          <div className="space-y-3">
+            {findings.map((finding) => (
+              <div key={finding.fingerprint} className="grid gap-3 rounded-xl border border-slate-800 bg-slate-950/30 p-4 sm:grid-cols-[1fr_170px] sm:items-center">
+                <div>
+                  <p className="font-semibold text-white">{finding.title}</p>
+                  <p className="text-xs text-slate-500">
+                    {finding.severity} · confianza {finding.confidence} · {finding.id}
+                  </p>
+                </div>
+                <select
+                  value={finding.status}
+                  onChange={(event) => updateTriage(finding.fingerprint, event.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200"
+                >
+                  <option value="new">Nuevo</option>
+                  <option value="confirmed">Confirmado</option>
+                  <option value="false_positive">Falso positivo</option>
+                  <option value="accepted">Riesgo aceptado</option>
+                  <option value="resolved">Resuelto</option>
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {scan.recommendations?.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
           <h2 className="font-bold text-white text-lg">Recomendaciones de Seguridad</h2>

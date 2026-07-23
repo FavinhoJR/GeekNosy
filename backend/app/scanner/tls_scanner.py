@@ -1,9 +1,9 @@
 """Análisis TLS/SSL no intrusivo."""
 
+import asyncio
 import socket
 import ssl
 from datetime import datetime, timezone
-from urllib.parse import urlparse
 
 from app.config import settings
 from app.scanner.http_scanner import normalize_domain
@@ -30,11 +30,16 @@ def _get_cert_info(hostname: str, port: int = 443) -> dict:
                 cert = ssock.getpeercert()
                 evidence["valid"] = True
                 evidence["protocol"] = ssock.version()
+                evidence["cipher"] = ssock.cipher()
+                evidence["alpn_protocol"] = ssock.selected_alpn_protocol()
                 if cert:
                     issuer = dict(x[0] for x in cert.get("issuer", []))
                     subject = dict(x[0] for x in cert.get("subject", []))
                     evidence["issuer"] = issuer.get("organizationName", str(issuer))
                     evidence["subject"] = subject.get("commonName", str(subject))
+                    evidence["subject_alt_names"] = [
+                        value for kind, value in cert.get("subjectAltName", []) if kind == "DNS"
+                    ]
                     not_after = cert.get("notAfter")
                     not_before = cert.get("notBefore")
                     if not_after:
@@ -73,12 +78,21 @@ def _probe_tls_version(hostname: str, tls_version: int) -> bool:
 
 async def scan_tls(domain: str) -> dict:
     hostname = normalize_domain(domain)
-    evidence = _get_cert_info(hostname)
+    evidence = await asyncio.to_thread(_get_cert_info, hostname)
 
     # Probar TLS 1.2 y 1.3
-    tls12 = _probe_tls_version(hostname, ssl.TLSVersion.TLSv1_2)
-    tls13 = _probe_tls_version(hostname, ssl.TLSVersion.TLSv1_3)
-    evidence["tls_versions"] = {"tls_1_2": tls12, "tls_1_3": tls13}
+    tls10, tls11, tls12, tls13 = await asyncio.gather(
+        asyncio.to_thread(_probe_tls_version, hostname, ssl.TLSVersion.TLSv1),
+        asyncio.to_thread(_probe_tls_version, hostname, ssl.TLSVersion.TLSv1_1),
+        asyncio.to_thread(_probe_tls_version, hostname, ssl.TLSVersion.TLSv1_2),
+        asyncio.to_thread(_probe_tls_version, hostname, ssl.TLSVersion.TLSv1_3),
+    )
+    evidence["tls_versions"] = {
+        "tls_1_0": tls10,
+        "tls_1_1": tls11,
+        "tls_1_2": tls12,
+        "tls_1_3": tls13,
+    }
 
     return evidence
 
@@ -116,4 +130,8 @@ def score_tls(evidence: dict) -> tuple[float, list[str]]:
     else:
         findings.append("tls13_unsupported")
 
-    return min(100.0, score), findings
+    if tls_versions.get("tls_1_0") or tls_versions.get("tls_1_1"):
+        score -= 20
+        findings.append("legacy_tls_enabled")
+
+    return max(0.0, min(100.0, score)), findings

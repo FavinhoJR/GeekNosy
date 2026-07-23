@@ -16,7 +16,7 @@ async def migrate_legacy_data():
     from sqlalchemy import select
 
     from app.compat import normalize_comparison_status, normalize_grade, normalize_mode
-    from app.models import Scan, ScanResult
+    from app.models import Scan
 
     from sqlalchemy.orm import selectinload
 
@@ -33,19 +33,32 @@ async def migrate_legacy_data():
 
 
 async def _ensure_columns():
-    """Añade columnas nuevas en SQLite si la BD ya existía."""
-    migrations = [
-        "ALTER TABLE scans ADD COLUMN route_profile VARCHAR(32)",
-        "ALTER TABLE scans ADD COLUMN include_exposure_checks BOOLEAN DEFAULT 0",
-        "ALTER TABLE scans ADD COLUMN max_paths_per_domain INTEGER",
-        "ALTER TABLE scans ADD COLUMN route_meta_json TEXT",
+    """Small compatibility migration until Alembic is introduced."""
+    columns = [
+        ("route_profile", "VARCHAR(32)"),
+        ("include_exposure_checks", "BOOLEAN DEFAULT 0"),
+        ("max_paths_per_domain", "INTEGER"),
+        ("route_meta_json", "TEXT"),
+        ("intensity", "VARCHAR(32) DEFAULT 'standard'"),
+        ("owner", "VARCHAR(128)"),
+        ("job_id", "VARCHAR(36)"),
+        ("finding_details_json", "TEXT"),
     ]
-    async with engine.begin() as conn:
-        for sql in migrations:
-            try:
-                await conn.exec_driver_sql(sql)
-            except Exception:
-                pass
+    if engine.url.get_backend_name() == "sqlite":
+        for name, sql_type in columns:
+            async with engine.begin() as conn:
+                try:
+                    await conn.exec_driver_sql(
+                        f"ALTER TABLE scans ADD COLUMN {name} {sql_type}"
+                    )
+                except Exception:
+                    pass
+    else:
+        async with engine.begin() as conn:
+            for name, sql_type in columns:
+                await conn.exec_driver_sql(
+                    f"ALTER TABLE scans ADD COLUMN IF NOT EXISTS {name} {sql_type}"
+                )
 
 
 async def init_db():

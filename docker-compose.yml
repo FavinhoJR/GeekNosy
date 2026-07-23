@@ -1,15 +1,40 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: datagobs
+      POSTGRES_USER: datagobs
+      POSTGRES_PASSWORD: ${DATAGOBS_POSTGRES_PASSWORD:-datagobs-local}
+    volumes:
+      - datagobs-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datagobs"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: datagobs-backend
     volumes:
       - datagobs-data:/app/data
     environment:
-      - DATAGOBS_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db
+      DATAGOBS_DATABASE_URL: postgresql+asyncpg://datagobs:${DATAGOBS_POSTGRES_PASSWORD:-datagobs-local}@postgres:5432/datagobs
+      DATAGOBS_API_KEYS: ${DATAGOBS_API_KEYS:-}
+      DATAGOBS_INLINE_WORKER: "false"
+      DATAGOBS_CORS_ORIGINS: ${DATAGOBS_CORS_ORIGINS:-http://localhost:3000}
+      DATAGOBS_ALLOWED_DOMAINS: ${DATAGOBS_ALLOWED_DOMAINS:-}
+      DATAGOBS_ALLOWED_CIDRS: ${DATAGOBS_ALLOWED_CIDRS:-}
+      DATAGOBS_ALLOW_PRIVATE_TARGETS: ${DATAGOBS_ALLOW_PRIVATE_TARGETS:-false}
+      DATAGOBS_WEBHOOK_URL: ${DATAGOBS_WEBHOOK_URL:-}
+      DATAGOBS_WEBHOOK_SECRET: ${DATAGOBS_WEBHOOK_SECRET:-}
     expose:
       - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
@@ -17,11 +42,30 @@ services:
       timeout: 10s
       retries: 3
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - datagobs-data:/app/data
+    environment:
+      DATAGOBS_DATABASE_URL: postgresql+asyncpg://datagobs:${DATAGOBS_POSTGRES_PASSWORD:-datagobs-local}@postgres:5432/datagobs
+      DATAGOBS_WORKER_ID: worker-1
+      DATAGOBS_ALLOWED_DOMAINS: ${DATAGOBS_ALLOWED_DOMAINS:-}
+      DATAGOBS_ALLOWED_CIDRS: ${DATAGOBS_ALLOWED_CIDRS:-}
+      DATAGOBS_ALLOW_PRIVATE_TARGETS: ${DATAGOBS_ALLOW_PRIVATE_TARGETS:-false}
+      DATAGOBS_WEBHOOK_URL: ${DATAGOBS_WEBHOOK_URL:-}
+      DATAGOBS_WEBHOOK_SECRET: ${DATAGOBS_WEBHOOK_SECRET:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: datagobs-frontend
     ports:
       - "3000:80"
     depends_on:
@@ -30,3 +74,4 @@ services:
 
 volumes:
   datagobs-data:
+  datagobs-postgres:
