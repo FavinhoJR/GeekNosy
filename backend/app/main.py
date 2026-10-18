@@ -18,7 +18,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DataGobs",
+    title="GeekNosy",
     description="Herramienta defensiva de evaluación de seguridad web pública",
     version=__version__,
     lifespan=lifespan,
@@ -40,7 +40,7 @@ app.include_router(reports_router)
 async def health():
     return {
         "status": "ok",
-        "tool": "DataGobs",
+        "tool": "GeekNosy",
         "version": __version__,
         "author": __author__,
     }
@@ -52,7 +52,7 @@ async def info():
     from app.route_profiles import PROFILE_DESCRIPTIONS, ROUTE_PROFILES, ROUTE_PROFILE_MODES
 
     return {
-        "name": "DataGobs",
+        "name": "GeekNosy",
         "version": __version__,
         "author": __author__,
         "license": "Uso abierto",

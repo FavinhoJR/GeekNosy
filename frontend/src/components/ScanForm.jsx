@@ -69,7 +69,7 @@ export default function ScanForm({ onScanComplete }) {
               value={institution}
               onChange={(e) => setInstitution(e.target.value)}
               placeholder="Ej. Ministerio de Tecnología"
-              className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all"
+              className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden transition-all"
             />
           </div>
 
@@ -82,7 +82,7 @@ export default function ScanForm({ onScanComplete }) {
               onChange={(e) => setDomains(e.target.value)}
               rows={4}
               placeholder="example.com&#10;seguridad.gob.ar&#10;https://api.site.org"
-              className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all font-mono leading-relaxed"
+              className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden transition-all font-mono leading-relaxed"
               required
             />
             <span className="text-[11px] text-slate-500 mt-1 block">
@@ -101,7 +101,7 @@ export default function ScanForm({ onScanComplete }) {
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all cursor-pointer"
+                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden transition-all cursor-pointer"
               >
                 <option value="standard" className="bg-slate-900">Estándar</option>
                 <option value="advanced" className="bg-slate-900">Avanzado</option>
@@ -114,7 +114,7 @@ export default function ScanForm({ onScanComplete }) {
               <select
                 value={routeProfile}
                 onChange={(e) => setRouteProfile(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all cursor-pointer"
+                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden transition-all cursor-pointer"
               >
                 <option value="auto" className="bg-slate-900">Auto (Tecnología detectada)</option>
                 <option value="minimal" className="bg-slate-900">Minimal (Solo Core)</option>
@@ -136,7 +136,7 @@ export default function ScanForm({ onScanComplete }) {
                 max={120}
                 value={maxPaths}
                 onChange={(e) => setMaxPaths(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all"
+                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden transition-all"
               />
             </div>
             <div className="flex flex-col justify-end gap-2.5 py-1">
@@ -145,7 +145,7 @@ export default function ScanForm({ onScanComplete }) {
                   type="checkbox"
                   checked={includeDefault}
                   onChange={(e) => setIncludeDefault(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2"
+                  className="w-4 h-4 rounded-sm border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2"
                 />
                 Usar perfiles de rutas inteligente
               </label>
@@ -154,7 +154,7 @@ export default function ScanForm({ onScanComplete }) {
                   type="checkbox"
                   checked={includeExposure}
                   onChange={(e) => setIncludeExposure(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2"
+                  className="w-4 h-4 rounded-sm border-slate-800 bg-slate-950 text-blue-600 focus:ring-blue-500/20 focus:ring-offset-0 focus:ring-2"
                 />
                 Checks de exposición sensible (.env, .git)
               </label>
@@ -178,7 +178,7 @@ export default function ScanForm({ onScanComplete }) {
             onChange={(e) => setCustomPaths(e.target.value)}
             rows={3}
             placeholder="Escribe una ruta por línea. Ej:&#10;/admin-portal/&#10;/wp-content/uploads/&#10;/custom-api/v1/"
-            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none font-mono"
+            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-hidden font-mono"
           />
         </div>
       </details>
@@ -193,7 +193,7 @@ export default function ScanForm({ onScanComplete }) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98] disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-500/10 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
+          className="w-full sm:w-auto px-8 py-3.5 bg-linear-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98] disabled:opacity-50 text-white font-semibold rounded-xl transition-all shadow-lg shadow-blue-500/10 flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed"
         >
           {loading ? (
             <>

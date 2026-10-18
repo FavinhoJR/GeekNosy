@@ -127,7 +127,7 @@ export default function ScanDetail() {
             ['DNS', scan.dns_score],
             ['Consistencia', scan.consistency_score],
           ].map(([label, score]) => (
-            <div key={label} className="bg-slate-950/40 border border-slate-850 rounded-xl p-3.5 shadow-sm">
+            <div key={label} className="bg-slate-950/40 border border-slate-850 rounded-xl p-3.5 shadow-xs">
               <p className="text-slate-500 text-[10px] uppercase font-semibold tracking-wider mb-1">{label}</p>
               <p className="text-lg font-bold text-white">{score?.toFixed(1)}</p>
             </div>
@@ -226,7 +226,7 @@ export default function ScanDetail() {
                   <td className="py-3.5 pr-3 font-mono max-w-[200px] truncate text-slate-200" title={r.url_evaluated}>
                     {r.path || r.url_evaluated}
                     {r.is_scoring_source && (
-                      <span className="ml-2 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider">
+                      <span className="ml-2 bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 px-1.5 py-0.5 rounded-sm text-[9px] font-bold uppercase tracking-wider">
                         Nota
                       </span>
                     )}

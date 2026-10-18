@@ -1,9 +1,24 @@
-# DataGobs
+# GeekNosy
 
-**DataGobs** es una herramienta defensiva y no intrusiva para evaluar la configuración pública de seguridad web de dominios autorizados.
+**GeekNosy** es una herramienta defensiva y no intrusiva para evaluar la configuración pública de seguridad web de dominios autorizados.
 
 **Autor:** Favio Urrea  
 **Licencia:** MIT (uso abierto)
+
+Anteriormente llamado DataGobs. Repositorio oficial: [FavinhoJR/GeekNosy](https://github.com/FavinhoJR/GeekNosy).
+
+## Frontend y dependencias
+
+- Tailwind CSS 4 con el plugin oficial `@tailwindcss/vite`; tema definido en `frontend/src/index.css`.
+- Instalar con `npm ci` desde `frontend/` para respetar `package-lock.json`.
+- Verificar con `npm run build` y `npm audit`.
+- Navegadores mínimos: Chrome 111, Safari 16.4 o Firefox 128, según los requisitos de Tailwind 4.
+
+## Configuración y datos existentes
+
+Las variables de configuración usan el prefijo `GEEKNOSY_`, por ejemplo `GEEKNOSY_DATABASE_URL` o `GEEKNOSY_SCAN_TIMEOUT`. Las variables anteriores `DATAGOBS_` siguen funcionando; las nuevas tienen prioridad si ambas están definidas.
+
+Se conserva `backend/data/datagobs.db` y el volumen Docker `datagobs_datagobs-data` para mantener el historial. Estos nombres internos son intencionales. El cambio de marca no renombra ni elimina los datos existentes.
 
 ## Qué evalúa
 
@@ -24,7 +39,7 @@
 
 ## Rutas evaluadas (perfiles inteligentes)
 
-DataGobs usa **perfiles de rutas**. Por defecto trabaja en modo `auto`:
+GeekNosy usa **perfiles de rutas**. Por defecto trabaja en modo `auto`:
 
 | Componente | Descripción |
 |------------|-------------|
@@ -65,7 +80,7 @@ La nota global se calcula **solo** con la URL del sitio principal (respuesta 200
 ## Inicio rápido con Docker
 
 ```bash
-cd DataGobs
+cd GeekNosy
 docker compose up --build -d
 ```
 
@@ -118,7 +133,7 @@ uvicorn app.main:app --reload --port 8000
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -127,7 +142,7 @@ Frontend en http://localhost:5173 (proxy API → :8000)
 ## Estructura del proyecto
 
 ```
-DataGobs/
+GeekNosy/
 ├── backend/          # FastAPI + scanner + SQLite
 ├── frontend/         # React + Tailwind
 ├── examples/         # Reporte JSON de ejemplo

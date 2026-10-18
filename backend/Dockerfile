@@ -13,7 +13,7 @@ COPY app ./app
 
 RUN mkdir -p /app/data
 
-ENV DATAGOBS_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db
+ENV GEEKNOSY_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db
 ENV PYTHONUNBUFFERED=1
 
 EXPOSE 8000

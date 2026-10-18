@@ -67,7 +67,7 @@ export default function Dashboard({ refreshKey }) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Ej. Gob, domain.com..."
-            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-600 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10 transition-all"
+            className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 placeholder-slate-600 focus:border-blue-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500/10 transition-all"
           />
         </div>
         <div>
@@ -77,7 +77,7 @@ export default function Dashboard({ refreshKey }) {
           <select
             value={gradeFilter}
             onChange={(e) => setGradeFilter(e.target.value)}
-            className="bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10 transition-all cursor-pointer"
+            className="bg-slate-950/80 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-slate-100 focus:border-blue-500 focus:outline-hidden focus:ring-2 focus:ring-blue-500/10 transition-all cursor-pointer"
           >
             <option value="" className="bg-slate-900">Todas</option>
             {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((g) => (
@@ -94,7 +94,7 @@ export default function Dashboard({ refreshKey }) {
       </div>
 
       {/* Scans Table Container */}
-      <div className="bg-slate-950/20 rounded-2xl border border-slate-800/80 overflow-hidden shadow-inner">
+      <div className="bg-slate-950/20 rounded-2xl border border-slate-800/80 overflow-hidden inset-shadow-sm">
         {loadError && (
           <div className="p-4 m-4 text-red-400 bg-red-950/30 border border-red-900/40 rounded-xl text-sm">
             {loadError}
