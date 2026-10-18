@@ -3,11 +3,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: datagobs-backend
+    container_name: geeknosy-backend
     volumes:
       - datagobs-data:/app/data
     environment:
-      - DATAGOBS_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db
+      - GEEKNOSY_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db
     expose:
       - "8000"
     restart: unless-stopped
@@ -21,7 +21,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: datagobs-frontend
+    container_name: geeknosy-frontend
     ports:
       - "3000:80"
     depends_on:
@@ -29,4 +29,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  # Mantener el volumen y archivo originales para conservar el historial.
   datagobs-data:
+    name: datagobs_datagobs-data

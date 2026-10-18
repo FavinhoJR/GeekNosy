@@ -35,7 +35,7 @@ async def _load_scan(scan_id: int, db: AsyncSession) -> Scan:
 def _scan_to_dict(scan: Scan) -> dict:
     findings = scan.get_findings()
     return {
-        "tool": "DataGobs",
+        "tool": "GeekNosy",
         "version": "1.0.0",
         "author": "Favio Urrea",
         "license": "Uso abierto",
@@ -94,7 +94,7 @@ async def export_json(scan_id: int, db: AsyncSession = Depends(get_db)):
     return Response(
         content=content,
         media_type="application/json",
-        headers={"Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.json"'},
+        headers={"Content-Disposition": f'attachment; filename="geeknosy-{scan.domain}-{scan_id}.json"'},
     )
 
 
@@ -133,7 +133,7 @@ async def export_csv(scan_id: int, db: AsyncSession = Depends(get_db)):
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="geeknosy-{scan.domain}-{scan_id}.csv"'},
     )
 
 
@@ -146,7 +146,7 @@ async def export_pdf(scan_id: int, db: AsyncSession = Depends(get_db)):
     title_style = ParagraphStyle("Title", parent=styles["Heading1"], fontSize=18, spaceAfter=12)
     elements = []
 
-    elements.append(Paragraph("DataGobs - Reporte de Seguridad Web", title_style))
+    elements.append(Paragraph("GeekNosy - Reporte de Seguridad Web", title_style))
     elements.append(Paragraph(f"Dominio: <b>{scan.domain}</b>", styles["Normal"]))
     if scan.institution:
         elements.append(Paragraph(f"Institución: {scan.institution}", styles["Normal"]))
@@ -196,7 +196,7 @@ async def export_pdf(scan_id: int, db: AsyncSession = Depends(get_db)):
 
     elements.append(Spacer(1, 1 * cm))
     elements.append(Paragraph(
-        "DataGobs v1.0 — Herramienta defensiva. Autor: Favio Urrea. Uso abierto.",
+        "GeekNosy v1.0 — Herramienta defensiva. Autor: Favio Urrea. Uso abierto.",
         ParagraphStyle("Footer", parent=styles["Normal"], fontSize=7, textColor=colors.grey),
     ))
 
@@ -205,5 +205,5 @@ async def export_pdf(scan_id: int, db: AsyncSession = Depends(get_db)):
     return Response(
         content=buffer.getvalue(),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="datagobs-{scan.domain}-{scan_id}.pdf"'},
+        headers={"Content-Disposition": f'attachment; filename="geeknosy-{scan.domain}-{scan_id}.pdf"'},
     )

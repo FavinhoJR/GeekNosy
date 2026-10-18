@@ -7,12 +7,12 @@ import ScanForm from './components/ScanForm'
 function Layout({ children }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col">
-      <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-40 shadow-sm">
+      <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 sticky top-0 z-40 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center gap-3">
           <img src="/shield.svg" alt="" className="w-8 h-8 brightness-0 invert opacity-90" />
           <div>
             <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-              DataGobs
+              GeekNosy
             </h1>
             <p className="text-slate-400 text-xs">Evaluación defensiva de seguridad web pública</p>
           </div>
@@ -26,7 +26,7 @@ function Layout({ children }) {
       
       <footer className="text-center text-xs text-slate-500 py-8 border-t border-slate-900 mt-12 bg-slate-900/30 space-y-2">
         <div className="max-w-3xl mx-auto px-4">
-          DataGobs — Solo evalúa configuración HTTP/HTTPS/DNS pública visible. Sin explotación ni pruebas intrusivas.
+          GeekNosy — Solo evalúa configuración HTTP/HTTPS/DNS pública visible. Sin explotación ni pruebas intrusivas.
         </div>
         <div className="text-slate-400 font-medium">v1.0 · Favio Urrea · Uso abierto</div>
       </footer>

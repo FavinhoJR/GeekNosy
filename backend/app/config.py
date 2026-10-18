@@ -1,5 +1,5 @@
 from pathlib import Path
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, EnvSettingsSource, SettingsConfigDict
 
 # Puntos por header (modo estándar)
 HEADER_POINTS = {
@@ -30,11 +30,18 @@ class Settings(BaseSettings):
     max_redirects: int = 5
     max_paths_per_domain_default: int = 40
     max_body_preview: int = 8192
-    user_agent: str = "DataGobs/1.0 (defensive security assessment; +https://github.com/datagobs)"
+    user_agent: str = "GeekNosy/1.0 (defensive security assessment)"
     data_dir: Path = Path("./data")
 
-    class Config:
-        env_prefix = "DATAGOBS_"
+    model_config = SettingsConfigDict(env_prefix="GEEKNOSY_")
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        # Las variables nuevas tienen prioridad; conservar instalaciones anteriores.
+        legacy_env = EnvSettingsSource(settings_cls, env_prefix="DATAGOBS_")
+        return init_settings, env_settings, legacy_env, dotenv_settings, file_secret_settings
 
 
 settings = Settings()

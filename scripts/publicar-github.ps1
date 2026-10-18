@@ -1,4 +1,4 @@
-# Publicar DataGobs en GitHub (repositorio PRIVADO)
+# Publicar GeekNosy en GitHub (repositorio PRIVADO)
 # Uso: .\scripts\publicar-github.ps1
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +11,7 @@ if (-not (Test-Path $gh)) { $gh = "gh" }
 
 Set-Location (Resolve-Path "$PSScriptRoot\..")
 
-Write-Host "=== DataGobs - Publicar en GitHub (privado) ===" -ForegroundColor Cyan
+Write-Host "=== GeekNosy - Publicar en GitHub (privado) ===" -ForegroundColor Cyan
 
 # Verificar sesión GitHub
 & $gh auth status 2>&1 | Out-Null
@@ -29,14 +29,14 @@ if (-not (Test-Path ".git")) {
 $status = & $git status --porcelain
 if ($status) {
     & $git commit -m @"
-Publicación inicial de DataGobs.
+Publicación inicial de GeekNosy.
 
 Herramienta defensiva de evaluación de seguridad web pública.
 Autor: Favio Urrea
 "@
 }
 
-$repoName = "DataGobs"
+$repoName = "GeekNosy"
 Write-Host "Creando repositorio privado: $repoName" -ForegroundColor Green
 
 & $gh repo create $repoName --private --source=. --remote=origin --push
