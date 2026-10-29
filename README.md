@@ -22,10 +22,8 @@ La herramienta realiza solicitudes de red a los objetivos. Su alcance es la conf
 
 ## Instalación y documentación
 
-Consulta la [guía técnica](GUIA_TECNICA.md) para los requisitos, el arranque con Docker, la validación local, la configuración, los perfiles de evaluación y la referencia de API.
+Consulta la [guía técnica](https://github.com/FavinhoJR/GeekNosy/blob/main/GUIA_TECNICA.md) para los requisitos, el arranque con Docker, la validación local, la configuración, los perfiles de evaluación y la referencia de API.
 
 ## Autor y licencia
 
-**Autor:** [Favio Urrea (@FavinhoJR)](https://github.com/FavinhoJR).
-
-**Licencia:** [MIT](LICENSE).
+**Autor:** Favio Urrea. **Licencia:** [MIT](https://github.com/FavinhoJR/GeekNosy/blob/main/LICENSE).
