@@ -26,5 +26,6 @@ Consulta la [guía técnica](GUIA_TECNICA.md) para los requisitos, el arranque c
 
 ## Autor y licencia
 
-**Autor:** Favio Urrea.
+**Autor:** [Favio Urrea (@FavinhoJR)](https://github.com/FavinhoJR).
+
 **Licencia:** [MIT](LICENSE).

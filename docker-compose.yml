@@ -1,15 +1,41 @@
 services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: geeknosy
+      POSTGRES_USER: geeknosy
+      POSTGRES_PASSWORD: ${GEEKNOSY_POSTGRES_PASSWORD:-geeknosy-local}
+    volumes:
+      - geeknosy-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geeknosy"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: datagobs-backend
     volumes:
-      - datagobs-data:/app/data
+      - geeknosy-data:/app/data
     environment:
-      - DATAGOBS_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db
+      GEEKNOSY_DATABASE_URL: postgresql+asyncpg://geeknosy:${GEEKNOSY_POSTGRES_PASSWORD:-geeknosy-local}@postgres:5432/geeknosy
+      GEEKNOSY_API_KEYS: ${GEEKNOSY_API_KEYS:-}
+      GEEKNOSY_INLINE_WORKER: "false"
+      GEEKNOSY_CORS_ORIGINS: ${GEEKNOSY_CORS_ORIGINS:-http://localhost:3000}
+      GEEKNOSY_ALLOWED_DOMAINS: ${GEEKNOSY_ALLOWED_DOMAINS:-}
+      GEEKNOSY_ALLOWED_CIDRS: ${GEEKNOSY_ALLOWED_CIDRS:-}
+      GEEKNOSY_ALLOW_PRIVATE_TARGETS: ${GEEKNOSY_ALLOW_PRIVATE_TARGETS:-false}
+      GEEKNOSY_WEBHOOK_URL: ${GEEKNOSY_WEBHOOK_URL:-}
+      GEEKNOSY_WEBHOOK_SECRET: ${GEEKNOSY_WEBHOOK_SECRET:-}
+      GEEKNOSY_OSV_ENABLED: ${GEEKNOSY_OSV_ENABLED:-false}
     expose:
       - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
@@ -17,16 +43,86 @@ services:
       timeout: 10s
       retries: 3
 
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - geeknosy-data:/app/data
+    environment:
+      GEEKNOSY_DATABASE_URL: postgresql+asyncpg://geeknosy:${GEEKNOSY_POSTGRES_PASSWORD:-geeknosy-local}@postgres:5432/geeknosy
+      GEEKNOSY_WORKER_ID: worker-1
+      GEEKNOSY_ALLOWED_DOMAINS: ${GEEKNOSY_ALLOWED_DOMAINS:-}
+      GEEKNOSY_ALLOWED_CIDRS: ${GEEKNOSY_ALLOWED_CIDRS:-}
+      GEEKNOSY_ALLOW_PRIVATE_TARGETS: ${GEEKNOSY_ALLOW_PRIVATE_TARGETS:-false}
+      GEEKNOSY_WEBHOOK_URL: ${GEEKNOSY_WEBHOOK_URL:-}
+      GEEKNOSY_WEBHOOK_SECRET: ${GEEKNOSY_WEBHOOK_SECRET:-}
+      GEEKNOSY_AUTHORIZED_WORKER: "false"
+      GEEKNOSY_OSV_ENABLED: ${GEEKNOSY_OSV_ENABLED:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  authorized-worker:
+    profiles: ["authorized"]
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - geeknosy-data:/app/data
+    environment:
+      GEEKNOSY_DATABASE_URL: postgresql+asyncpg://geeknosy:${GEEKNOSY_POSTGRES_PASSWORD:-geeknosy-local}@postgres:5432/geeknosy
+      GEEKNOSY_WORKER_ID: authorized-worker-1
+      GEEKNOSY_AUTHORIZED_WORKER: "true"
+      GEEKNOSY_ALLOW_ACTIVE_CHECKS: ${GEEKNOSY_ALLOW_ACTIVE_CHECKS:-false}
+      GEEKNOSY_AUTH_PROFILES_JSON: ${GEEKNOSY_AUTH_PROFILES_JSON:-}
+      GEEKNOSY_ALLOWED_DOMAINS: ${GEEKNOSY_ALLOWED_DOMAINS:-}
+      GEEKNOSY_ALLOWED_CIDRS: ${GEEKNOSY_ALLOWED_CIDRS:-}
+      GEEKNOSY_ALLOW_PRIVATE_TARGETS: ${GEEKNOSY_AUTHORIZED_ALLOW_PRIVATE_TARGETS:-false}
+      GEEKNOSY_WEBHOOK_URL: ${GEEKNOSY_WEBHOOK_URL:-}
+      GEEKNOSY_WEBHOOK_SECRET: ${GEEKNOSY_WEBHOOK_SECRET:-}
+      GEEKNOSY_OSV_ENABLED: ${GEEKNOSY_OSV_ENABLED:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp"]
+    restart: unless-stopped
+
+  zap:
+    profiles: ["authorized-tools"]
+    image: ghcr.io/zaproxy/zaproxy:stable
+    entrypoint: ["zap-baseline.py"]
+
+  nuclei:
+    profiles: ["authorized-tools"]
+    image: projectdiscovery/nuclei:latest
+    entrypoint: ["nuclei"]
+
+  testssl:
+    profiles: ["authorized-tools"]
+    image: drwetter/testssl.sh:latest
+    entrypoint: ["testssl.sh"]
+
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: datagobs-frontend
     ports:
-      - "3000:80"
+      - "3000:8080"
     depends_on:
       - backend
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
 
 volumes:
-  datagobs-data:
+  geeknosy-data:
+  geeknosy-postgres:

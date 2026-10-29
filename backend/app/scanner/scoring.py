@@ -4,7 +4,6 @@ import math
 
 from app.config import (
     ADVANCED_HEADER_POINTS,
-    ADVANCED_SECURITY_HEADERS,
     HEADER_POINTS,
     SECURITY_HEADERS,
 )

@@ -1,7 +1,8 @@
 {
-  "name": "datagobs-frontend",
+  "name": "geeknosy-frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "packageManager": "pnpm@11.9.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,6 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource-variable/archivo": "^5.2.8",
+    "@fontsource-variable/ibm-plex-sans": "^5.2.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.1.1"

@@ -8,6 +8,11 @@ from fastapi.staticfiles import StaticFiles
 from app import __author__, __version__
 from app.api.reports import router as reports_router
 from app.api.routes import router as scans_router
+from app.api.jobs import router as jobs_router
+from app.api.findings import router as findings_router
+from app.api.schedules import router as schedules_router
+from app.api.imports import router as imports_router
+from app.config import settings
 from app.database import init_db
 
 
@@ -18,7 +23,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DataGobs",
+    title="GeekNosy",
     description="Herramienta defensiva de evaluación de seguridad web pública",
     version=__version__,
     lifespan=lifespan,
@@ -26,21 +31,25 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key"],
 )
 
 app.include_router(scans_router)
 app.include_router(reports_router)
+app.include_router(jobs_router)
+app.include_router(findings_router)
+app.include_router(schedules_router)
+app.include_router(imports_router)
 
 
 @app.get("/api/health")
 async def health():
     return {
         "status": "ok",
-        "tool": "DataGobs",
+        "tool": "GeekNosy",
         "version": __version__,
         "author": __author__,
     }
@@ -52,11 +61,11 @@ async def info():
     from app.route_profiles import PROFILE_DESCRIPTIONS, ROUTE_PROFILES, ROUTE_PROFILE_MODES
 
     return {
-        "name": "DataGobs",
+        "name": "GeekNosy",
         "version": __version__,
         "author": __author__,
         "license": "Uso abierto",
-        "description": "Evaluación no intrusiva de configuración pública de seguridad web",
+        "description": "Evaluación defensiva de postura web con ejecución pasiva por defecto",
         "route_profiles": {
             "available": ROUTE_PROFILE_MODES,
             "descriptions": PROFILE_DESCRIPTIONS,
@@ -78,15 +87,32 @@ async def info():
             "route_profile": ROUTE_PROFILE_MODES,
             "include_exposure_checks": "Solo metadatos HEAD; nunca descarga contenido sensible",
             "max_paths_per_domain_default": settings.max_paths_per_domain_default,
+            "intensity": ["passive", "fast", "standard", "bug_bounty", "deep", "custom"],
+            "authorization_confirmation_required": settings.require_authorization_confirmation,
+            "api_key_required": bool(settings.api_keys),
+            "execution_modes": ["passive", "authorized"],
+            "active_checks": ["reflection", "open_redirect", "sql_error", "dangerous_methods", "cors", "crlf"],
+            "authorized_worker_required": True,
         },
         "modes": ["standard", "advanced"],
         "restrictions": [
             "Sin explotación ni fuzzing agresivo",
             "Sin fuerza bruta ni bypass",
-            "Solo GET/HEAD públicos",
-            "Sin autenticación ni payloads",
+            "El stack base usa únicamente evidencia pública",
+            "Credenciales nombradas y probes de bajo impacto solo en worker autorizado",
             "Rutas sensibles: solo status, headers y content-type/length",
+            "Bloqueo SSRF de loopback, redes privadas, link-local y metadata cloud",
+            "Redirecciones limitadas al host autorizado",
         ],
+        "automation": {
+            "persistent_jobs": True,
+            "progress_and_cancellation": True,
+            "schedules": True,
+            "webhooks": bool(settings.webhook_url),
+            "exports": ["json", "jsonl", "csv", "pdf", "sarif", "sbom", "markdown", "html"],
+            "external_imports": ["nuclei-jsonl"],
+            "policy_as_code": str(settings.policy_file),
+        },
     }
 
 

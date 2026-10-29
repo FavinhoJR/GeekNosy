@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -37,6 +37,10 @@ class Scan(Base):
     include_exposure_checks: Mapped[bool] = mapped_column(default=False)
     max_paths_per_domain: Mapped[int | None] = mapped_column(Integer, nullable=True)
     route_meta_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    intensity: Mapped[str] = mapped_column(String(32), default="standard")
+    owner: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    job_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    finding_details_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     results: Mapped[list["ScanResult"]] = relationship(
         back_populates="scan", cascade="all, delete-orphan"
@@ -60,6 +64,12 @@ class Scan(Base):
         if not self.route_meta_json:
             return {}
         return json.loads(self.route_meta_json)
+
+    def set_finding_details(self, details: list[dict]):
+        self.finding_details_json = json.dumps(details, ensure_ascii=False, default=str)
+
+    def get_finding_details(self) -> list[dict]:
+        return json.loads(self.finding_details_json) if self.finding_details_json else []
 
 
 class ScanResult(Base):
@@ -126,3 +136,72 @@ class ScanResult(Base):
         if not self.cookies_json:
             return []
         return json.loads(self.cookies_json)
+
+
+class ScanJob(Base):
+    __tablename__ = "scan_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    status: Mapped[str] = mapped_column(String(24), default="queued", index=True)
+    progress: Mapped[float] = mapped_column(Float, default=0.0)
+    phase: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    request_json: Mapped[str] = mapped_column(Text)
+    scan_ids_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
+    worker_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    requires_authorized_worker: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    def set_request(self, value: dict):
+        self.request_json = json.dumps(value, ensure_ascii=False)
+
+    def get_request(self) -> dict:
+        return json.loads(self.request_json)
+
+    def set_scan_ids(self, value: list[int]):
+        self.scan_ids_json = json.dumps(value)
+
+    def get_scan_ids(self) -> list[int]:
+        return json.loads(self.scan_ids_json) if self.scan_ids_json else []
+
+
+class FindingTriage(Base):
+    __tablename__ = "finding_triage"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    scan_id: Mapped[int] = mapped_column(Integer, ForeignKey("scans.id"), index=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="new")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class ScanSchedule(Base):
+    __tablename__ = "scan_schedules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner: Mapped[str] = mapped_column(String(128), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    request_json: Mapped[str] = mapped_column(Text)
+    interval_minutes: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    def set_request(self, value: dict):
+        self.request_json = json.dumps(value, ensure_ascii=False)
+
+    def get_request(self) -> dict:
+        return json.loads(self.request_json)

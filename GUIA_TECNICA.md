@@ -1,224 +1,220 @@
 # GeekNosy: guía técnica
 
-## 1. Requisitos y arquitectura
+## 1. Arquitectura
 
-- Git y Docker Desktop con el motor Linux iniciado (en Windows, WSL 2).
-- Puerto 3000 disponible y conexión a Internet para descargar imágenes y dependencias.
-- Para evaluar dominios externos, el backend necesita salida HTTP/HTTPS y DNS.
+GeekNosy separa la interfaz, la API, la persistencia y la ejecución de trabajos:
 
-Flujo: navegador → puerto 3000 → Nginx/React → `/api/` → FastAPI → SQLite.
-El backend escucha en el puerto 8000 dentro de la red de Compose; no se publica directamente en Windows.
+```text
+Navegador :3000 -> Nginx :8080 -> FastAPI :8000 -> PostgreSQL
+                                      |
+                            worker pasivo / worker autorizado
+```
 
-El nombre del proyecto es **GeekNosy**. Esta versión conserva identificadores heredados de DataGobs en la interfaz, metadatos de API y reportes, nombres de contenedores, base de datos y variables `DATAGOBS_`. No cambies estos últimos sin planificar la compatibilidad y la conservación de datos.
+El stack base incluye:
 
-## 2. Descargar e iniciar con Docker
+- `frontend`: React compilado y servido por Nginx sin privilegios;
+- `backend`: API FastAPI y creación de trabajos;
+- `worker`: procesa exclusivamente trabajos pasivos;
+- `postgres`: conserva trabajos, escaneos, hallazgos, triage y agendas.
 
-Si todavía no tienes el repositorio, ejecuta desde la carpeta donde quieras guardarlo:
+Las acciones activas o autenticadas no se ejecutan en el worker base. Requieren el perfil Docker `authorized`, una referencia de alcance y una segunda confirmación.
+
+## 2. Inicio con Docker
+
+Requisitos: Docker Engine 24+ o Docker Desktop actual, Docker Compose v2 y al menos 2 GB de RAM disponibles.
 
 ```powershell
 git clone https://github.com/FavinhoJR/GeekNosy.git
-cd GeekNosy
-```
-
-En esta PC ya está descargado. Para iniciarlo desde PowerShell:
-
-```powershell
-Set-Location 'C:\Users\favio\OneDrive\Documentos\ChatGPT\GeekNosy'
-docker info
+Set-Location GeekNosy
+Copy-Item .env.example .env
 docker compose config --quiet
 docker compose up --build -d
 docker compose ps
 ```
 
-Abre **http://localhost:3000**. No hay inicio de sesión implementado.
-El primer arranque puede tardar mientras se construyen las imágenes. El backend tiene un healthcheck periódico.
+Abre `http://localhost:3000`. No es necesario instalar Python, Node, pnpm ni PostgreSQL en el host.
 
-El Compose actual publica `3000:80` en todas las interfaces del equipo. Para uso exclusivamente local, cambia esa entrada a `127.0.0.1:3000:80` antes del arranque. No expongas esta instancia sin controles de acceso: la API permite iniciar evaluaciones, leer reportes y borrar registros sin autenticación.
+Antes de desplegar fuera de un equipo local, cambia `GEEKNOSY_POSTGRES_PASSWORD`, configura `GEEKNOSY_API_KEYS` y limita `GEEKNOSY_ALLOWED_DOMAINS` o `GEEKNOSY_ALLOWED_CIDRS`.
 
-## 3. Verificar y usar
-
-Comprueba la web, la API y la comunicación a través de Nginx:
+## 3. Verificación
 
 ```powershell
 (Invoke-WebRequest 'http://localhost:3000').StatusCode
 Invoke-RestMethod 'http://localhost:3000/api/health'
 Invoke-RestMethod 'http://localhost:3000/api/info'
-Invoke-RestMethod 'http://localhost:3000/api/scans'
+Invoke-RestMethod 'http://localhost:3000/api/jobs'
 ```
 
-Resultado esperado: web HTTP 200, salud con `status: ok`, información de perfiles y listado de escaneos (vacío si aún no hay datos). El campo `tool` de salud conserva el nombre heredado DataGobs.
+El resultado esperado es HTTP 200, `status: ok`, capacidades públicas y una lista de trabajos posiblemente vacía. Si configuraste una clave, agrega `-Headers @{ 'X-API-Key' = 'TU_CLAVE' }` a las solicitudes protegidas.
 
-En el navegador:
+Para probar el motor usa únicamente un dominio propio o expresamente autorizado. Por política, los destinos privados, loopback, link-local, multicast y reservados permanecen bloqueados salvo configuración explícita.
 
-1. Introduce un dominio propio o expresamente autorizado.
-2. Empieza con modo Estándar, perfil Minimal y checks de exposición desactivados.
-3. Pulsa **Iniciar escaneo** y espera la respuesta.
-4. Busca el registro en **Escaneos Realizados** y abre **Detalle**.
-5. Revisa la URL puntuada, hallazgos y evidencias; descarga JSON, CSV o PDF.
-6. Repite con el mismo dominio para comprobar la comparación histórica.
-
-No necesitas escanear un objetivo externo para verificar que la aplicación arranca. Para probar el motor usa un objetivo bajo tu control; `localhost` dentro del backend corresponde al contenedor, no al host Windows.
-
-## 4. Apagar, consultar logs y actualizar
-
-Ejecuta estos comandos desde la raíz del repositorio:
+## 4. Operación
 
 ```powershell
 # Estado y logs
 docker compose ps
-docker compose logs --tail 100 backend frontend
+docker compose logs --tail 100 backend worker frontend postgres
 
-# Apagar conservando el historial
-docker compose down
-
-# Volver a encender
+# Reconstruir después de actualizar
+git pull --ff-only
+docker compose build --pull
 docker compose up -d
 
-# Reconstruir después de cambios
-docker compose up --build -d
+# Apagar conservando datos
+docker compose down
 ```
 
-Para actualizar el código, primero revisa `git status`, guarda o confirma tus cambios y luego ejecuta `git pull --ff-only` y reconstruye.
+No uses `docker compose down -v` si necesitas conservar el historial: elimina los volúmenes `geeknosy-postgres` y `geeknosy-data`.
 
-SQLite se guarda en `/app/data/datagobs.db`, dentro del volumen lógico `datagobs-data` (Compose normalmente lo crea como `geeknosy_datagobs-data`). `docker compose down` conserva ese volumen. **No uses `docker compose down -v` si necesitas conservar los escaneos: elimina el volumen y su historial.**
+Respaldo de PostgreSQL:
+
+```powershell
+docker compose exec postgres pg_dump -U geeknosy geeknosy > geeknosy-backup.sql
+```
 
 ## 5. Configuración
 
-No se necesita un archivo `.env` para el arranque Docker actual. Compose define `DATAGOBS_DATABASE_URL=sqlite+aiosqlite:////app/data/datagobs.db`.
+Las variables se definen en `.env` y usan el prefijo `GEEKNOSY_`.
 
-`backend/app/config.py` admite estas variables de entorno, con prefijo `DATAGOBS_`:
-
-| Variable | Valor predeterminado del código |
+| Variable | Uso |
 | --- | --- |
-| `DATAGOBS_DATABASE_URL` | `sqlite+aiosqlite:///./data/datagobs.db` |
-| `DATAGOBS_SCAN_TIMEOUT` | `15.0` segundos |
-| `DATAGOBS_PATH_TIMEOUT` | `8.0` segundos |
-| `DATAGOBS_PATH_RATE_LIMIT_MS` | `250` milisegundos |
-| `DATAGOBS_MAX_REDIRECTS` | `5` |
-| `DATAGOBS_MAX_PATHS_PER_DOMAIN_DEFAULT` | `40` |
-| `DATAGOBS_MAX_BODY_PREVIEW` | `8192` |
-| `DATAGOBS_DATA_DIR` | `./data` |
-| `DATAGOBS_USER_AGENT` | Identificador heredado definido en `config.py` |
+| `GEEKNOSY_POSTGRES_PASSWORD` | Contraseña usada por PostgreSQL en Compose |
+| `GEEKNOSY_API_KEYS` | Claves separadas por comas; vacía en desarrollo local |
+| `GEEKNOSY_CORS_ORIGINS` | Orígenes permitidos separados por comas |
+| `GEEKNOSY_ALLOWED_DOMAINS` | Allowlist de dominios |
+| `GEEKNOSY_ALLOWED_CIDRS` | Allowlist de redes |
+| `GEEKNOSY_ALLOW_PRIVATE_TARGETS` | Permite destinos privados en el stack base; `false` por defecto |
+| `GEEKNOSY_AUTHORIZED_ALLOW_PRIVATE_TARGETS` | Equivalente exclusivo del worker autorizado |
+| `GEEKNOSY_ALLOW_ACTIVE_CHECKS` | Habilita comprobaciones activas en el worker autorizado |
+| `GEEKNOSY_AUTH_PROFILES_JSON` | Perfiles de credenciales nombrados, sin enviar secretos desde el navegador |
+| `GEEKNOSY_WEBHOOK_URL` | Destino opcional de notificaciones |
+| `GEEKNOSY_WEBHOOK_SECRET` | Firma HMAC de webhooks |
+| `GEEKNOSY_OSV_ENABLED` | Consulta opcional de vulnerabilidades de dependencias |
 
-En Docker agrega los ajustes al bloque `environment` del servicio backend y recrea con `docker compose up -d`. Un `.env` de Compose no pasa automáticamente todas sus variables al contenedor: debes referenciarlas en `environment` o usar `env_file`. No publiques secretos.
+El código también admite límites mediante `GEEKNOSY_ALLOWED_PORTS`, `GEEKNOSY_GLOBAL_REQUESTS_PER_SECOND`, `GEEKNOSY_PER_HOST_REQUESTS_PER_SECOND`, `GEEKNOSY_MAX_CONCURRENT_REQUESTS`, `GEEKNOSY_MAX_DOMAINS_PER_JOB` y `GEEKNOSY_MAX_RESPONSE_BYTES`.
 
-El esquema de la petición define su propio valor predeterminado de 40 rutas; para variar una evaluación usa `max_paths_per_domain`.
+No publiques `.env`, claves API, secretos de webhook ni perfiles de credenciales.
 
-## 6. Perfiles y puntuación
+## 6. Modos de evaluación
 
-Los perfiles combinan rutas base, tecnología detectada y rutas personalizadas. La lista declarada se consulta en `GET /api/info` y en `backend/app/route_profiles.py`.
+### Pasivo
 
-| `route_profile` | Selección |
-| --- | --- |
-| `minimal` | Rutas core |
-| `auto` / `standard` | Core y perfiles según tecnología detectada |
-| `advanced` | Core, common, tecnología y rutas API cuando aplica |
-| `all` | Todos los perfiles generales, con el límite configurado |
+Disponible en el stack base. Recolecta evidencia pública HTTP, TLS y DNS, revisa cabeceras, cookies, CORS, CSP, exposición de configuración, tecnología observable y dependencias JavaScript. No intenta explotar vulnerabilidades.
 
-Perfiles internos: `core`, `common`, `wordpress`, `joomla`, `drupal`, `laravel_php`, `django_python`, `node_frontend`, `aspnet_iis`, `api_docs` y `exposure_checks`.
+### Autorizado
 
-- `custom_paths`: rutas adicionales, normalizadas y sin duplicados.
-- `include_default_paths`: activa las rutas predeterminadas.
-- `include_exposure_checks`: agrega checks sensibles cuando las rutas predeterminadas están activas. Estas rutas usan HEAD para inspeccionar metadatos, sin descargar su contenido.
-- `max_paths_per_domain`: de 1 a 120, predeterminado 40. La fase inicial core y comprobaciones complementarias pueden producir solicitudes adicionales; no es un límite global de peticiones de red.
+Configura primero `.env` y levanta el worker separado:
 
-| Modo | Ponderación |
-| --- | --- |
-| `standard` | TLS 45 %, cabeceras 55 % |
-| `advanced` | TLS 30 %, cabeceras 40 %, cookies 10 %, DNS 10 %, consistencia 10 % |
+```powershell
+docker compose --profile authorized up --build -d authorized-worker
+```
 
-El componente TLS se ajusta según la redirección HTTP → HTTPS. La nota va de 1 a 10 a partir del puntaje 0–100. El motor prioriza la raíz con respuesta 200; si no la obtiene, aplica alternativas de selección. Revisa `scoring_url`, `scoring_http_code` y las evidencias antes de interpretar el resultado. Las respuestas 403/404 también se reportan individualmente.
+Requiere `GEEKNOSY_ALLOW_ACTIVE_CHECKS=true`, confirmación reforzada y `authorization_reference`. Las comprobaciones disponibles son reflexión controlada, redirección abierta, errores SQL, métodos HTTP peligrosos, CORS reflejado y CRLF. GeekNosy no ordena al objetivo contactar metadatos de nube, loopback o terceros para probar SSRF.
+
+### Herramientas externas opcionales
+
+```powershell
+docker compose --profile authorized-tools run --rm zap -t https://tu-dominio.example
+docker compose --profile authorized-tools run --rm nuclei -u https://tu-dominio.example
+docker compose --profile authorized-tools run --rm testssl https://tu-dominio.example
+```
+
+Estas herramientas mantienen su propia política y nivel de intrusión. Revisa el alcance y sus argumentos antes de ejecutarlas.
 
 ## 7. API
 
-Base local a través de Nginx: `http://localhost:3000/api`.
+Base: `http://localhost:3000/api`. En desarrollo, OpenAPI está disponible en `http://localhost:8000/docs`.
 
-| Método | Ruta | Función |
+| Método | Ruta | Uso |
 | --- | --- | --- |
-| GET | `/api/health` | Estado del servicio |
-| GET | `/api/info` | Opciones, perfiles y metadatos |
-| POST | `/api/scan` | Evaluar uno o varios dominios |
-| GET | `/api/scans` | Listar; filtros `search`, `grade`, `comparison_status` |
-| GET | `/api/scans/{id}` | Detalle |
-| GET | `/api/scans/{id}/history` | Historial del dominio |
-| DELETE | `/api/scans/{id}` | Eliminar un registro |
-| GET | `/api/reports/{id}/json` | Reporte JSON |
-| GET | `/api/reports/{id}/csv` | Reporte CSV |
-| GET | `/api/reports/{id}/pdf` | Reporte PDF |
+| `GET` | `/api/health` | Salud del servicio |
+| `GET` | `/api/info` | Capacidades y límites públicos |
+| `POST/GET` | `/api/jobs` | Crear o listar trabajos |
+| `GET` | `/api/jobs/{id}` | Progreso y resultado |
+| `POST` | `/api/jobs/{id}/cancel` | Cancelación cooperativa |
+| `POST` | `/api/jobs/{id}/retry` | Reintentar un trabajo |
+| `GET/POST/PATCH/DELETE` | `/api/schedules` | Agenda recurrente |
+| `GET` | `/api/scans` | Historial filtrable |
+| `GET` | `/api/scans/{id}` | Evidencia del análisis |
+| `GET/PATCH` | `/api/scans/{id}/findings` | Triage |
+| `GET` | `/api/reports/{id}/{format}` | Exportación |
+| `POST` | `/api/imports/nuclei/{scan_id}` | Importar Nuclei JSONL |
 
-Ejemplo PowerShell: reemplaza el dominio reservado por uno que tengas autorización para evaluar.
+Formatos de reporte: `json`, `jsonl`, `csv`, `pdf`, `sarif`, `sbom`, `markdown` y `html`.
+
+Ejemplo de trabajo pasivo:
 
 ```powershell
+$headers = @{ 'Content-Type' = 'application/json'; 'X-API-Key' = 'TU_CLAVE' }
 $body = @{
+  request = @{
     domains = @('tu-dominio.example')
-    institution = 'Validación local'
-    mode = 'standard'
-    route_profile = 'minimal'
-    include_default_paths = $true
-    include_exposure_checks = $false
-    max_paths_per_domain = 10
-    custom_paths = @()
-} | ConvertTo-Json
+    authorization_confirmed = $true
+    execution_mode = 'passive'
+    mode = 'advanced'
+    intensity = 'standard'
+  }
+} | ConvertTo-Json -Depth 5
 
-$resultado = Invoke-RestMethod -Method Post `
-    -Uri 'http://localhost:3000/api/scan' `
-    -ContentType 'application/json' -Body $body -TimeoutSec 180
-
-$id = $resultado[0].id
-Invoke-RestMethod "http://localhost:3000/api/scans/$id"
-Invoke-WebRequest "http://localhost:3000/api/reports/$id/json" -OutFile "reporte-$id.json"
-Invoke-WebRequest "http://localhost:3000/api/reports/$id/csv" -OutFile "reporte-$id.csv"
-Invoke-WebRequest "http://localhost:3000/api/reports/$id/pdf" -OutFile "reporte-$id.pdf"
+$job = Invoke-RestMethod -Method Post -Uri 'http://localhost:3000/api/jobs' -Headers $headers -Body $body
+Invoke-RestMethod "http://localhost:3000/api/jobs/$($job.id)" -Headers $headers
 ```
 
-Las evaluaciones se procesan dentro de la petición HTTP. Nginx tiene `proxy_read_timeout 120s`; si aparece un 504, revisa los logs y el historial antes de repetir el escaneo. Ampliar el timeout del cliente no modifica el timeout del proxy.
+## 8. Desarrollo local
 
-Reporte ilustrativo: [examples/sample-report.json](examples/sample-report.json). No es evidencia de una evaluación ejecutada en esta PC.
-
-## 8. Desarrollo sin Docker (PowerShell)
-
-Requiere Python 3.11 o superior y Node.js con npm; el Dockerfile del frontend usa Node 22.
-
-Terminal 1, desde la raíz:
+Backend, desde la raíz:
 
 ```powershell
-cd backend
+Set-Location backend
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt -r requirements-dev.txt
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-Terminal 2, desde la raíz:
+El backend usa SQLite localmente si no se define `GEEKNOSY_DATABASE_URL`; el worker inline está activo por defecto para simplificar el desarrollo.
+
+Frontend, en otra terminal:
 
 ```powershell
-cd frontend
-npm install
-npm run dev
+Set-Location frontend
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
-Interfaz: http://localhost:5173. Vite redirige `/api` a `localhost:8000`. Documentación interactiva del backend: http://localhost:8000/docs. La carpeta de datos se crea al cargar la configuración.
+Interfaz: `http://localhost:5173`. Vite redirige `/api` a `http://localhost:8000`.
 
-## 9. Estructura y diagnóstico
+## 9. Pruebas y build
 
-```text
-GeekNosy/
-├── backend/          # FastAPI, scanner, modelos y SQLite
-├── frontend/         # React, Vite, Tailwind y Nginx
-├── examples/         # Reporte ilustrativo
-├── scripts/          # Script heredado de publicación inicial
-├── docker-compose.yml
-├── AGENTS.md
-├── README.md
-└── GUIA_TECNICA.md
+```powershell
+Set-Location backend
+.\.venv\Scripts\python.exe -m pytest -q
+
+Set-Location ..\frontend
+pnpm run build
+
+Set-Location ..
+docker compose config --quiet
+docker compose build
 ```
 
-No uses `scripts/publicar-github.ps1` para actualizar este clon: es un script heredado para crear un repositorio DataGobs. Aquí ya existe `origin` apuntando a GeekNosy.
+## 10. Documentación complementaria
+
+- [Capacidades y límites](docs/FEATURES.md)
+- [Modelo de seguridad](docs/SECURITY.md)
+- [Despliegue](docs/DEPLOYMENT.md)
+- [API y automatización](docs/API.md)
+- [Sistema visual](DESIGN.md)
+
+## 11. Diagnóstico
 
 | Problema | Qué revisar |
 | --- | --- |
-| Error `dockerDesktopLinuxEngine` | Abre Docker Desktop y espera a que `docker info` responda |
-| Puerto 3000 ocupado | `Get-NetTCPConnection -LocalPort 3000 -ErrorAction SilentlyContinue`; detén el servicio que reconozcas o cambia el puerto publicado |
-| HTTP 502 | Estado y logs del backend; espera a que termine el arranque |
-| HTTP 504 | Tiempo de evaluación, rutas, conectividad y logs; consulta el historial |
-| Sin resultados de TLS/DNS | Acceso del contenedor al objetivo, DNS y disponibilidad del sitio |
-| Historial vacío tras cambiar de carpeta/proyecto Compose | Verifica qué volumen está montado con `docker inspect datagobs-backend --format '{{json .Mounts}}'` |
+| Docker no responde | Abre Docker Desktop y espera a que `docker info` muestre el servidor |
+| Puerto 3000 ocupado | Detén el servicio reconocido o cambia el puerto publicado |
+| HTTP 502 | Salud y logs de `backend`; espera a PostgreSQL y al healthcheck |
+| Trabajo sin avanzar | Logs de `worker` o `authorized-worker` según el modo |
+| Objetivo bloqueado | Allowlist, puertos y política de destinos privados/reservados |
+| Sin TLS o DNS | Resolución DNS, salida del contenedor y disponibilidad del objetivo |
+| API 401 | `GEEKNOSY_API_KEYS` y cabecera `X-API-Key` |

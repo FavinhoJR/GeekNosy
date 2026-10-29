@@ -1,0 +1,16 @@
+version: 1
+name: geeknosy-default
+scope:
+  require_authorization: true
+  max_domains_per_job: 100
+network:
+  max_requests_per_second: 4
+  allowed_ports: [80, 443]
+passive:
+  allowed_intensities: [passive, fast, standard, bug_bounty, deep, custom]
+authorized:
+  require_reference: true
+  allowed_checks: [reflection, open_redirect, sql_error, dangerous_methods, cors, crlf]
+reporting:
+  standards: [OWASP Top 10, OWASP ASVS, PCI DSS, SOC 2, NIST CSF]
+  minimum_triage_severity: info

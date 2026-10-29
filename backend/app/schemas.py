@@ -1,10 +1,13 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 ScanMode = Literal["standard", "advanced"]
 RouteProfile = Literal["auto", "minimal", "standard", "advanced", "all"]
+ScanIntensity = Literal["passive", "fast", "standard", "bug_bounty", "deep", "custom"]
+ExecutionMode = Literal["passive", "authorized"]
+ActiveCheck = Literal["reflection", "open_redirect", "sql_error", "dangerous_methods", "cors", "crlf"]
 
 
 class ScanRequest(BaseModel):
@@ -16,6 +19,102 @@ class ScanRequest(BaseModel):
     include_default_paths: bool = True
     include_exposure_checks: bool = False
     max_paths_per_domain: int = Field(default=40, ge=1, le=120)
+    intensity: ScanIntensity = "standard"
+    authorization_confirmed: bool = False
+    execution_mode: ExecutionMode = "passive"
+    active_authorization_confirmed: bool = False
+    authorization_reference: str | None = Field(default=None, max_length=200)
+    active_checks: list[ActiveCheck] = Field(default_factory=list)
+    credential_profile: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_.-]{1,64}$")
+    requests_per_second: float | None = Field(default=None, ge=0.2, le=50)
+    tags: list[str] = Field(default_factory=list, max_length=30)
+
+    @field_validator("active_checks")
+    @classmethod
+    def unique_active_checks(cls, checks: list[str]) -> list[str]:
+        return list(dict.fromkeys(checks))
+
+    @field_validator("domains")
+    @classmethod
+    def clean_domains(cls, domains: list[str]) -> list[str]:
+        cleaned = [domain.strip() for domain in domains if domain.strip()]
+        if not cleaned:
+            raise ValueError("Debe indicar al menos un dominio")
+        return list(dict.fromkeys(cleaned))
+
+    @field_validator("custom_paths")
+    @classmethod
+    def validate_paths(cls, paths: list[str]) -> list[str]:
+        result = []
+        for path in paths:
+            value = path.strip()
+            if not value:
+                continue
+            if "://" in value or value.startswith("//"):
+                raise ValueError("Las rutas personalizadas deben ser relativas al dominio")
+            if not value.startswith("/"):
+                value = "/" + value
+            result.append(value)
+        return list(dict.fromkeys(result))
+
+
+class ScanJobCreate(BaseModel):
+    request: ScanRequest
+
+
+class ScanJobOut(BaseModel):
+    id: str
+    status: str
+    progress: float
+    phase: str | None = None
+    owner: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    cancel_requested: bool = False
+    error: str | None = None
+    scan_ids: list[int] = []
+    request: dict
+    requires_authorized_worker: bool = False
+
+
+class FindingTriageUpdate(BaseModel):
+    status: Literal["new", "confirmed", "false_positive", "accepted", "resolved"]
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class FindingOut(BaseModel):
+    id: str
+    fingerprint: str
+    title: str
+    severity: str
+    confidence: str = "medium"
+    status: str = "new"
+    notes: str | None = None
+    recommendation: str = ""
+    references: list[str] = []
+    evidence: dict = {}
+
+
+class ScheduleCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    interval_minutes: int = Field(ge=5, le=525600)
+    request: ScanRequest
+
+
+class ScheduleUpdate(BaseModel):
+    enabled: bool
+
+
+class ScheduleOut(BaseModel):
+    id: str
+    name: str
+    interval_minutes: int
+    enabled: bool
+    next_run_at: datetime
+    last_run_at: datetime | None = None
+    created_at: datetime
+    request: dict
 
 
 class ScanResultOut(BaseModel):
@@ -52,6 +151,8 @@ class ScanOut(BaseModel):
     institution: str | None
     domain: str
     mode: str
+    intensity: str = "standard"
+    job_id: str | None = None
     route_profile: str | None = None
     include_exposure_checks: bool = False
     max_paths_per_domain: int | None = None
@@ -70,6 +171,7 @@ class ScanOut(BaseModel):
     dns_score: float
     consistency_score: float
     findings: list[str]
+    finding_details: list[dict] = []
     recommendations: list[dict]
     tech_detection: dict | None = None
     route_selection: dict | None = None
@@ -85,6 +187,8 @@ class ScanSummary(BaseModel):
     institution: str | None
     domain: str
     mode: str
+    intensity: str = "standard"
+    job_id: str | None = None
     route_profile: str | None = None
     created_at: datetime
     overall_score: float

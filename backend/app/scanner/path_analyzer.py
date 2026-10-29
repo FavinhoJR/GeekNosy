@@ -1,7 +1,7 @@
 """Análisis de hallazgos por ruta (complementario, no afecta nota global principal)."""
 
 from app.config import ADVANCED_SECURITY_HEADERS, SECURITY_HEADERS
-from app.route_profiles import CRITICAL_EXPOSURE_PATHS, EXPOSURE_PATHS
+from app.route_profiles import CRITICAL_EXPOSURE_PATHS
 from app.scanner.route_selector import is_exposure_path, normalize_path
 
 
@@ -75,6 +75,10 @@ def analyze_path_result(
         "exposure_check": is_exposure_path(path),
         "severity": severity,
         "finding_key": finding_key,
+        "resolved_ips": result.get("resolved_ips", []),
+        "duration_ms": result.get("duration_ms"),
+        "body_sha256": result.get("body_sha256"),
+        "body_bytes_read": result.get("body_bytes_read"),
     }
     return result
 
